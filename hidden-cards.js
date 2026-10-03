@@ -78,7 +78,9 @@
       const card = wrapper.querySelector('.playing-card');
       let badge = card.querySelector('.hidden-count');
       if (!badge) { badge = element('span', undefined, 'hidden-count'); card.append(badge); }
-      badge.textContent = modes.length ? `${inferred.candidates.length}${inferred.stone_possible ? ' + ◇' : ''} posibles` : `Oculta ${inferred.label}`;
+      const count = inferred.candidates.length;
+      badge.textContent = !modes.length ? `Oculta ${inferred.label}` : !count && inferred.stone_possible ? 'Piedra posible'
+        : `${count}${inferred.stone_possible ? ' + ◇' : ''} ${count === 1 && !inferred.stone_possible ? 'posible' : 'posibles'}`;
       card.setAttribute('aria-label', `Carta oculta ${inferred.label}`);
     }
   };
