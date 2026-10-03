@@ -8,5 +8,6 @@ Cambios de este proyecto:
 - `joker_context`: contadores de consumibles, manos, descartes, probabilidades y contexto de ronda.
 - `ability` y `runtime`: valores actuales de las cartas y de los comodines.
 - Copia de datos serializables con límite de profundidad y protección ante referencias circulares.
+- Conversión de tablas con índices discontinuos o claves mixtas a objetos JSON, conservando los arreglos densos y sin modificar los datos del juego.
 
 El instalador descarga la versión fijada de BalatroBot y reemplaza este archivo tanto en la copia local de la dependencia como en el mod instalado. No se distribuye código ni archivos de Balatro en este repositorio.

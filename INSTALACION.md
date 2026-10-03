@@ -98,7 +98,8 @@ Descargá la nueva versión o ejecutá `git pull` si clonaste el repositorio. Co
 Después de instalar, desde la carpeta del proyecto:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader test_synergies -v
+uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader test_synergies test_lua_snapshot -v
 ```
 
 Para desarrollo, `Instalar.cmd -SkipModInstall` prepara las dependencias y detecta el juego sin reinstalar los mods. El instalador y el lanzador están preparados para Windows; no incluyen un flujo de instalación para macOS o Linux.

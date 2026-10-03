@@ -342,7 +342,33 @@ local function snapshot(value, depth, seen)
     end
   end
   seen[value] = nil
-  return out
+  -- The JSON encoder only accepts dense arrays or objects with string keys.
+  -- Game metadata can mix array entries and named fields (or have holes).
+  local count, highest, array = 0, 0, true
+  for k in pairs(out) do
+    count = count + 1
+    if type(k) ~= "number" or k < 1 or k % 1 ~= 0 then
+      array = false
+    else
+      highest = math.max(highest, k)
+    end
+  end
+  if array and highest == count then return out end
+
+  local object = {}
+  for k, v in pairs(out) do
+    if type(k) == "string" then object[k] = v end
+  end
+  for k, v in pairs(out) do
+    if type(k) == "number" then
+      local key = tostring(k)
+      -- Retain both entries when numeric and string keys have the same spelling.
+      if object[key] ~= nil then key = "[number] " .. key end
+      while object[key] ~= nil do key = key .. "#" end
+      object[key] = v
+    end
+  end
+  return object
 end
 
 local function extract_card(card)
@@ -910,7 +936,8 @@ function gamestate.get_gamestate()
     state_data.pack = extract_area(G.pack_cards)
   end
 
-  return state_data
+  -- Also sanitize fields produced by the upstream extractors, e.g. hand examples.
+  return snapshot(state_data)
 end
 
 -- ==========================================================================
