@@ -9,6 +9,7 @@ from urllib.request import urlopen
 from unittest.mock import patch
 
 import reader
+from native_engine import executable, request
 from synergies import LIBRARY, JOKERS, evaluate, purchase
 from test_simulator import card
 
@@ -26,6 +27,13 @@ def shop(owned=None, offers=None, deck=None):
 
 
 class SynergyTests(unittest.TestCase):
+    @unittest.skipUnless(executable().is_file(), 'Build the native engine to check consumable identities')
+    def test_build_consumables_exist_in_the_rules_registry(self):
+        catalog = set(request({'op':'catalog'})['consumables'])
+        for build in LIBRARY['builds']:
+            for key in build['tarots'] + build['planets']:
+                self.assertIn(key, catalog, build['id'])
+
     def test_library_keys_sources_and_catalog_are_valid(self):
         self.assertEqual(len(JOKERS),150)
         self.assertEqual(len(LIBRARY['builds']),12)
