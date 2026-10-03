@@ -42,11 +42,53 @@ cache_lock = threading.Lock()
 cached = None
 problem = 'Esperando conexión con Balatro'
 def fingerprint(data):
-    value = copy.deepcopy({k:v for k,v in data.items() if k != 'registro'})
-    for key in ('hand','jokers','consumables','collection','draw_pool','shop','pack'):
-        for card in (value.get(key) or {}).get('cards',[]):
-            if isinstance(card.get('state'),dict):
-                card['state'].pop('highlight',None)
+    """Compare gameplay inputs, following the native engine's import contract.
+
+    Live tables also contain UI objects: round_resets.blind_tag.tag_sprite has
+    transforms and timers that change every frame. They must not cancel work.
+    Keep ordered hands/inventory so suggested indices and joker order stay valid.
+    """
+    def fields(value, keys):
+        value = value if isinstance(value,dict) else {}
+        return {k:value[k] for k in keys if k in value}
+
+    def card_value(card):
+        value = fields(card, ('id','key','modifier'))
+        value['value'] = fields(card.get('value'), ('rank','suit'))
+        value['state'] = fields(card.get('state'), ('hidden','debuff','forced_selection'))
+        value['ability'] = fields(card.get('ability'), (
+            'perma_bonus','played_this_ante','forced_selection','debuff',
+            'mult','extra','x_mult','Xmult','yorick_discards','caino_xmult',
+            'invis_rounds','to_do_poker_hand','eternal','rental','perishable',
+            'perish_tally','hands_played_at_create','extra_value'))
+        return value
+
+    value = fields(data, ('state','ante_num','round_num','deck','money','excluded_jokers'))
+    value['round'] = fields(data.get('round'),
+        ('hands_left','discards_left','chips','hands_played','discards_used'))
+    for key in ('hand','jokers','consumables','draw_pool','discard_pool'):
+        area = data.get(key) or {}
+        value[key] = fields(area, ('limit','highlighted_limit'))
+        value[key]['cards'] = [card_value(c) for c in area.get('cards',[])]
+    for key in ('unseen_cards','unknown_jokers'):
+        value[key] = [card_value(c) for c in data.get(key,[])]
+    value['hands'] = {k:fields(v, ('level','chips','mult','played','played_this_round','visible'))
+                      for k,v in (data.get('hands') or {}).items()}
+    value['active_blind'] = fields(data.get('active_blind'),
+        ('key','chips','disabled','triggered','prepped','hands','only_hand','discards_sub','hands_sub'))
+    value['blinds'] = {k:fields(v, ('key','type','status','score'))
+                       for k,v in (data.get('blinds') or {}).items()}
+    value['used_vouchers'] = sorted((data.get('used_vouchers') or {}).keys())
+    ctx = data.get('joker_context') or {}
+    value['joker_context'] = fields(ctx, (
+        'hands_played','skips','rental_rate','starting_deck_size','discount_percent',
+        'edition_rate','bankrupt_at','ecto_minus','interest_cap','interest_amount',
+        'last_hand_played','last_tarot_planet','playing_card','probabilities',
+        'consumeable_usage_total','consumeable_usage','pool_flags'))
+    value['joker_context']['round_resets'] = fields(ctx.get('round_resets'), ('hands','discards'))
+    value['joker_context']['current_round'] = fields(ctx.get('current_round'),
+        ('most_played_poker_hand','mail_card','castle_card','ancient_card','idol_card'))
+    value['joker_context']['blind'] = fields(ctx.get('blind'), ('disabled',))
     return json.dumps(value,sort_keys=True)
 
 

@@ -3,6 +3,10 @@ import copy
 import io
 import json
 import unittest
+import threading
+import time
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from native_engine import request, analyze, executable
@@ -273,6 +277,27 @@ class NativeEngineTests(unittest.TestCase):
         self.assertEqual(seq['final_score'],16)
         self.assertFalse(seq['reached_target'])
         self.assertEqual(seq['hands_used'],1)
+
+    def test_native_simulation_finishes_with_live_animation_changes(self):
+        s=fixture([card('2','S')]);s['draw_pool']['cards']=[card('A','H')]
+        s['round'].update(hands_left=1,discards_left=1);s['blinds']['small']['score']=16
+        sprite={'role':{'major':{'UIBox':{'overflow_check_timer':0}}}}
+        s['joker_context']['round_resets']={'hands':4,'discards':3,'blind_tag':{'tag_sprite':sprite}}
+        controller=reader.SimulationController(lambda:s)
+        with tempfile.TemporaryDirectory() as folder, patch('reader.RECORDS',Path(folder)):
+            threading.Thread(target=controller.run,daemon=True).start()
+            controller.submit(s)
+            updates=0;deadline=time.monotonic()+5
+            while controller.result['status']=='running' and time.monotonic()<deadline:
+                updates+=1
+                sprite['role']['major']['UIBox']['overflow_check_timer']=updates
+                time.sleep(.005)
+            result=controller.view()
+            self.assertEqual(result['status'],'ready',result)
+            self.assertGreater(updates,0)
+            self.assertEqual(result['recommendation']['trials'],1000)
+            self.assertEqual(result['recommendation']['win_probability'],1)
+            self.assertIsNotNone(result['recommendation']['winning_sequence'])
 
 
 class ReaderNormalizationTests(unittest.TestCase):

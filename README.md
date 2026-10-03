@@ -37,6 +37,8 @@ El cálculo empieza solo al pulsar **Simular**. Durante el análisis aparecen re
 
 Las recomendaciones muestran cartas por valor y palo, por ejemplo **As ♠** o **J ♥**, y resaltan las cartas de la mano o del inventario. Seguí el orden mostrado cuando corresponda. Después de jugar, descartar, usar o vender, pulsá **Simular** de nuevo. Cualquier cambio relevante de estado cancela el cálculo anterior y retira su recomendación. El lector continúa respondiendo durante el cálculo.
 
+La comparación usa los datos de juego que importa el motor: cartas y orden, recursos, valores de comodines, niveles, contadores y reglas de la ciega. Los temporizadores, movimientos de la interfaz, descripciones y vistas previas de manos no cancelan la simulación.
+
 ## Builds y tienda
 
 La sección **Qué aporta la tienda** incluye 12 builds investigadas en internet, con enlaces a sus fuentes, piezas presentes y piezas faltantes. Podés detectar una estrategia con tus comodines o elegir una build objetivo; la preferencia se conserva en el navegador.
