@@ -1,0 +1,16 @@
+.venv/
+.deps/
+.downloads/
+downloads/
+logs/
+registros/
+output/
+.playwright-cli/
+__pycache__/
+*.py[cod]
+*.log
+*.bak
+*.tmp
+config.local.json
+.env
+.env.*
