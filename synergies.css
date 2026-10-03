@@ -21,4 +21,5 @@ a{color:var(--green)}.build-library{display:grid;grid-template-columns:repeat(au
 .library-card{padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff03}
 .library-card button{font-size:12px;padding:7px 14px;margin-top:12px}.library-card p{font-size:12px;color:var(--muted)}
 #synergy-status{font-size:13px;color:var(--muted)}#build-warnings p{font-size:12px;color:var(--red)}
-@media(max-width:640px){.shop-grid{grid-template-columns:1fr}.build-toolbar{align-items:stretch;flex-direction:column}}
+.layout>div,.layout>aside{min-width:0}
+@media(max-width:640px){.layout,.sidebar{grid-template-columns:minmax(0,1fr)}.shop-grid{grid-template-columns:minmax(0,1fr)}.build-toolbar{align-items:stretch;flex-direction:column}}
