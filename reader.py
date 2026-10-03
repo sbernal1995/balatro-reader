@@ -1,4 +1,4 @@
-"""Local, read-only Balatro dashboard. Python standard library only."""
+"""Local, read-only Balatro dashboard with NumPy Monte Carlo analysis."""
 import json
 import copy
 import threading

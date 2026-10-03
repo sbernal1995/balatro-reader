@@ -59,7 +59,7 @@ Hacé doble clic en **Iniciar.cmd**. Se abre Balatro con la API y el panel en [h
 4. Jugá o descartá en Balatro. Cuando cambia el estado, la recomendación anterior se retira.
 5. Pulsá **Simular** nuevamente para calcular con las cartas reales, las fichas que faltan y las manos y descartes restantes.
 
-El cálculo compara jugar ahora con un descarte seguido de la mejor jugada. Usa **1000 robos aleatorios por cada opción de descarte**, sin usar el orden real de la pila. Es una búsqueda de una jugada hacia adelante, no una simulación completa de toda la ronda. Los efectos todavía sin implementar se indican en el panel y bloquean la recomendación.
+El cálculo compara las primeras jugadas y descartes mediante **1000 rondas simuladas por opción**, usando todas las manos y descartes restantes, sin usar el orden real de la pila. Prioriza la mayor probabilidad de ganar la ciega y luego menos manos para conseguirlo. Permite encadenar descartes y aplica las pérdidas de Mult del Comodín verde. El panel muestra el porcentaje de ganar con una mano, con hasta dos, etc. En estados grandes las decisiones futuras se aproximan; el porcentaje no garantiza la estrategia óptima. Puede tardar varios minutos con ocho cartas y varios recursos. Los efectos todavía sin implementar se indican en el panel y bloquean la recomendación.
 
 Para usar la API, abrí el juego mediante **Iniciar.cmd**. Si ya lo abriste desde Steam sin la API, cerralo y usá ese acceso. Podés cerrar el panel sin detener el lector; para terminar por completo, cerrá Balatro y los procesos del lector en el Administrador de tareas.
 

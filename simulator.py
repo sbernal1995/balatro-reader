@@ -1,4 +1,4 @@
-"""One-discard lookahead, exhaustive plays and 1000 independent draws per discard.
+"""Finite-round Monte Carlo: compare first actions with all remaining resources.
 
 Only supported rules produce a recommendation. This is not a full-run solver.
 The draw pool is shuffled independently; the game's actual draw order is unused.
@@ -24,7 +24,7 @@ SUPPORTED = {'j_joker', 'j_half', 'j_banner', 'j_mystic_summit', 'j_blue_joker',
              'j_abstract', 'j_fortune_teller', 'j_bull', 'j_bootstraps',
              'j_gros_michel', 'j_cavendish', 'j_jolly', 'j_zany', 'j_mad',
              'j_crazy', 'j_droll', 'j_sly', 'j_wily', 'j_clever', 'j_devious',
-             'j_crafty'}
+             'j_crafty', 'j_green_joker'}
 
 def mapping(value):
     return value if isinstance(value, dict) else {}
@@ -86,7 +86,7 @@ class Evaluator:
             return addition / (factor - 1)
         return sorted(indices, key=key, reverse=True)
 
-    def scores(self, hands, discards_left, remaining):
+    def scores(self, hands, discards_left, remaining, green_mult=None):
         """Evaluate every subset for all supplied hands in one vectorized batch."""
         groups, padded = selections(hands.shape[1], self.limit)
         hands = np.concatenate((hands, np.full((len(hands), 1), len(self.cards)-1)), axis=1)
@@ -168,6 +168,7 @@ class Evaluator:
                 steel = (original[:, i, 2] == 5) & (original[:, i, 5] == 0)
                 multiplier = original[:, i, 8] ** (1 + original[:, i, 4])
                 mult *= np.where(held & steel[:, None], multiplier[:, None], 1)
+        green_index = 0
         for joker in self.jokers:
             if mapping(joker.get('state')).get('debuff'):
                 continue
@@ -182,7 +183,7 @@ class Evaluator:
             if key == 'j_joker': mult += a.get('mult',4)
             elif key == 'j_half': mult += np.where(size <= e.get('size',3),e.get('mult',20),0)
             elif key == 'j_banner': chips += discards_left * scalar
-            elif key == 'j_mystic_summit': mult += e.get('mult',15) if discards_left == e.get('d_remaining',0) else 0
+            elif key == 'j_mystic_summit': mult += np.where(discards_left == e.get('d_remaining',0),e.get('mult',15),0)
             elif key == 'j_blue_joker': chips += scalar * remaining
             elif key == 'j_abstract': mult += scalar * len(self.jokers)
             elif key == 'j_fortune_teller': mult += mapping(mapping(self.state.get('joker_context')).get('consumeable_usage_total')).get('tarot',0)
@@ -190,6 +191,11 @@ class Evaluator:
             elif key == 'j_bootstraps': mult += e.get('mult',2) * max(0,math.floor((self.state.get('money',0)+mapping(self.state.get('joker_context')).get('dollar_buffer',0))/e.get('dollars',5)))
             elif key == 'j_gros_michel': mult += e.get('mult',15)
             elif key == 'j_cavendish': mult *= e.get('Xmult',3)
+            elif key == 'j_green_joker':
+                # Its "before" event adds Mult before this hand is scored.
+                current = a.get('mult',0) if green_mult is None else green_mult[:,green_index,None]
+                mult += current + e.get('hand_add',1)
+                green_index += 1
             else:
                 condition = {'j_jolly':pair,'j_zany':three,'j_mad':two_pair,
                              'j_crazy':straight,'j_droll':flush,'j_sly':pair,
@@ -201,15 +207,18 @@ class Evaluator:
             if ed == 'POLYCHROME': mult *= 1.5
         return np.floor(chips * mult), kind, groups
 
-    def best(self, hands, discards_left, remaining):
-        score, kinds, groups = self.scores(hands, discards_left, remaining)
+    def best(self, hands, discards_left, remaining, green_mult=None):
+        score, kinds, groups = self.scores(hands, discards_left, remaining, green_mult)
         # Subsets are ordered by size: ties preserve cards.
         index = score.argmax(axis=1)
         rows = np.arange(len(hands))
         return score[rows,index], kinds[rows,index], index, groups
 
 def analyze(state, trials=1000, seed=20261002, progress=None, cancelled=None):
+    from round_planner import RoundPlanner, preference
     started = time.perf_counter()
+    if trials < 1:
+        raise ValueError('Se necesita al menos una tirada.')
     if state.get('state') != 'SELECTING_HAND':
         return {'status':'waiting','reason':'Esperando una mano para evaluar.'}
     hand = mapping(state.get('hand')).get('cards', [])
@@ -240,60 +249,60 @@ def analyze(state, trials=1000, seed=20261002, progress=None, cancelled=None):
     original = np.arange(len(hand))[None,:]
     discards = round_info.get('discards_left',0)
     scores, kinds, groups = evaluator.scores(original,discards,len(pool))
-    ranked = sorted(range(len(groups)),key=lambda i:(-scores[0,i],len(groups[i]),groups[i]))
-    plays = [{'action':'play','indices':[i+1 for i in evaluator.order(groups[j])],
-              'hand':NAMES[kinds[0,j]],'score':float(scores[0,j]),
-              'win_probability':float(scores[0,j]>=target),'trials':0}
-             for j in ranked[:5]]
-    best_play = plays[0]
-    candidates = []
+    hands_left = round_info.get('hands_left',0)
+    planner = RoundPlanner(evaluator,len(hand),len(pool),hands_left,discards,target)
+    plays, candidates = [], []
     rng = np.random.default_rng(seed)
-    # Samples without replacement. Each row is an independent random permutation.
+    # Complete hypothetical decks, shared between first actions. No actual draw order.
+    permutations = (np.argsort(rng.random((trials,len(pool))),axis=1)
+                    if pool else np.empty((trials,0),dtype=int))
     max_discard = min(5,len(hand))
-    draws = (np.argsort(rng.random((trials,len(pool))),axis=1)[:, :min(max_discard,len(pool))]+len(hand)
-             if pool else np.empty((trials,0),dtype=int))
     def snapshot(done, total, final=False):
-        ranked_discards=sorted(candidates,key=lambda c:(-c['win_probability'],-c['score'],len(c['indices'])))
-        best=best_play
-        if best_play['win_probability']<1 and ranked_discards:
-            contender=ranked_discards[0]
-            if (contender['win_probability'],contender['score'])>(best['win_probability'],best['score']):
-                best=contender
-        return {'status':'ready' if final else 'running','partial':not final,
-                'completed':done,'total':total,'recommendation':best,'plays':plays,
-                'discards':ranked_discards[:5],'discard_options':done,
+        ranked_discards=sorted(candidates,key=preference)
+        ranked_plays=sorted(plays,key=preference)
+        ranked_all=sorted(plays+candidates,key=preference)
+        best=ranked_all[0] if ranked_all else None
+        result = {'status':'ready' if final else 'running','partial':not final,
+                'completed':done,'total':total,'plays':ranked_plays[:5],
+                'discards':ranked_discards[:5],
+                'play_options':len(plays), 'discard_options':len(candidates),
                 'trials_per_option':trials,'target':target,
                 'hands_left':round_info.get('hands_left'), 'discards_left':discards,
                 'hand_number':round_info.get('hands_played',0)+1,
                 'hands_after_next_play':round_info.get('hands_left',0)-1,
-                'discards_after_action':discards-int(best['action']=='discard'),
+                'discards_after_action':discards-int(best is not None and best['action']=='discard'),
                 'hand_cards':hand,
                 'elapsed_seconds':round(time.perf_counter()-started,2),
-                'scope':'Compara jugar ahora contra un descarte y la mejor jugada posterior. La probabilidad corresponde a superar la ciega con esa próxima jugada; no a ganar toda la ronda o partida. No usa consumibles ni simula más descartes futuros.',
-                'score_mode':'Puntuación determinista con los efectos implementados; Monte Carlo para los robos sin reemplazo.'}
-    total_options=sum(math.comb(len(hand),k) for k in range(1,max_discard+1)) if discards>0 else 0
-    if not pool and len(hand)<=max_discard and total_options:
-        total_options-=1
+                'scope':'Probabilidad estimada de ganar esta ciega usando todas las manos y descartes disponibles. Prioriza más victorias, después menos manos para ganar y luego el uso de descartes. '+
+                        ('Las continuaciones se resuelven exactamente para este estado pequeño.' if planner.exact else
+                         'Las continuaciones usan una estrategia aproximada que decide con las cartas visibles y una muestra independiente; no garantiza el óptimo global.')+
+                        ' No usa consumibles ni decide compras.',
+                'planning_mode':'exact_continuations' if planner.exact else 'adaptive_rollouts',
+                'score_mode':'Fichas adicionales acumuladas desde el estado actual; robos sin reemplazo y costos de descarte incluidos.'}
+        if best is not None:
+            result['recommendation']=best
+        return result
+    discard_groups = [remove for count in range(1,max_discard+1)
+                      for remove in itertools.combinations(range(len(hand)),count)
+                      if len(remove)<len(hand) or pool] if discards>0 else []
+    total_options=len(groups)+len(discard_groups)
     if progress:
         progress(0,total_options,snapshot(0,total_options))
-    if discards>0:
-        for count in range(1,max_discard+1):
-            for remove in itertools.combinations(range(len(hand)),count):
-                if cancelled and cancelled():
-                    return {'status':'superseded'}
-                retained = [i for i in range(len(hand)) if i not in remove]
-                draw_count=min(count,len(pool))
-                if not retained and not draw_count:
-                    continue
-                new_hands = np.concatenate((np.tile(retained,(trials,1)),draws[:,:draw_count]),axis=1).astype(int)
-                sample_scores, _, _, _ = evaluator.best(new_hands,discards-1,len(pool)-draw_count)
-                probability = float(np.mean(sample_scores>=target))
-                candidates.append({'action':'discard','indices':[i+1 for i in remove],
-                    'score':float(np.mean(sample_scores)), 'win_probability':probability,
-                    'standard_error':float(np.std(sample_scores,ddof=1)/math.sqrt(trials)),
-                    'win_error_95':1.96*math.sqrt(probability*(1-probability)/trials),
-                    'trials':trials, 'p10':float(np.percentile(sample_scores,10)),
-                    'p90':float(np.percentile(sample_scores,90))})
-                if progress:
-                    progress(len(candidates),total_options,snapshot(len(candidates),total_options))
-    return snapshot(len(candidates),total_options,True)
+    # Start with high-scoring plays so early partial results are useful.
+    play_order=sorted(range(len(groups)),key=lambda i:(-scores[0,i],len(groups[i]),groups[i]))
+    actions=[('play',groups[j],j) for j in play_order]+[('discard',g,None) for g in discard_groups]
+    for done,(action,remove,index) in enumerate(actions,1):
+        if cancelled and cancelled():
+            return {'status':'superseded'}
+        result=planner.simulate(action,remove,permutations,seed+1,cancelled)
+        if result is None:
+            return {'status':'superseded'}
+        result.update(action=action,indices=[i+1 for i in (evaluator.order(remove) if action=='play' else remove)])
+        if action=='play':
+            result.update(hand=NAMES[kinds[0,index]],immediate_score=float(scores[0,index]))
+            plays.append(result)
+        else:
+            candidates.append(result)
+        if progress:
+            progress(done,total_options,snapshot(done,total_options))
+    return snapshot(total_options,total_options,True)

@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 
 from simulator import Evaluator, analyze
+from round_planner import RoundPlanner
 
 def card(rank, suit='H', **modifier):
     return {'value':{'rank':rank,'suit':suit},'modifier':modifier,'state':{}}
@@ -84,8 +85,117 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(Evaluator(s,s['hand']['cards']).best(np.array([[0]]),1,0)[0][0],52)
 
 class MonteCarloTests(unittest.TestCase):
+    def test_accumulates_score_over_three_hands(self):
+        s=state([card('A')],[card('K'),card('Q')])
+        s['round'].update(hands_left=3,discards_left=0)
+        s['blinds']['small']['score']=46
+        r=analyze(s)['recommendation']
+        self.assertEqual(r['win_probability'],1)
+        self.assertEqual(r['score'],46)
+        self.assertEqual(r['expected_hands_to_win'],3)
+        self.assertEqual(r['win_by_hands'],[0,0,1])
+        s['round']['hands_left']=2
+        self.assertEqual(analyze(s)['recommendation']['win_probability'],0)
+
+    def test_same_win_chance_prefers_fewer_hands(self):
+        s=state([card('2')],[card('A')])
+        s['blinds']['small']['score']=16
+        r=analyze(s)
+        self.assertEqual(r['plays'][0]['win_probability'],1)
+        self.assertEqual(r['plays'][0]['expected_hands_to_win'],2)
+        self.assertEqual(r['recommendation']['action'],'discard')
+        self.assertEqual(r['recommendation']['win_probability'],1)
+        self.assertEqual(r['recommendation']['expected_hands_to_win'],1)
+
+    def test_uses_chained_discards_to_raise_round_win_chance(self):
+        s=state([card('2')],[card('3'),card('A')])
+        s['round'].update(hands_left=1,discards_left=2)
+        s['blinds']['small']['score']=16
+        r=analyze(s)['recommendation']
+        self.assertEqual(r['action'],'discard')
+        self.assertEqual(r['win_probability'],1)
+        self.assertGreater(r['expected_discards_used'],1.4)
+        s['round']['discards_left']=1
+        p=analyze(s)['recommendation']['win_probability']
+        self.assertGreater(p,.45)
+        self.assertLess(p,.55)
+
+    def test_green_joker_discard_penalty_prefers_playing(self):
+        j={'key':'j_green_joker','ability':{'mult':4,'extra':{'hand_add':1,'discard_sub':1}}}
+        s=state([card('A')],[card('K')],jokers=[j])
+        s['round']['hands_left']=1
+        s['blinds']['small']['score']=90
+        r=analyze(s)
+        self.assertEqual(r['recommendation']['action'],'play')
+        self.assertEqual(r['plays'][0]['immediate_score'],96)
+        self.assertEqual(r['plays'][0]['win_probability'],1)
+        self.assertEqual(r['discards'][0]['win_probability'],0)
+
+    def test_green_joker_grows_on_every_play_and_clamps_after_discard(self):
+        j={'key':'j_green_joker','ability':{'mult':2,'extra':{'hand_add':1,'discard_sub':5}}}
+        s=state([card('2')],[card('A')],jokers=[j])
+        s['round'].update(hands_left=2,discards_left=0)
+        s['blinds']['small']['score']=105
+        r=analyze(s)['recommendation']
+        self.assertEqual(r['score'],108)
+        self.assertEqual(r['win_probability'],1)
+        s['round'].update(hands_left=1,discards_left=1)
+        r=analyze(s)['discards'][0]
+        self.assertEqual(r['score'],32) # Mult clamps to 0, then gains 1 before scoring.
+
+    def test_banner_cost_is_applied_after_each_discard(self):
+        j={'key':'j_banner','ability':{'extra':30}}
+        s=state([card('A')],[card('K')],jokers=[j])
+        s['round']['hands_left']=1
+        s['blinds']['small']['score']=40
+        r=analyze(s)
+        self.assertEqual(r['plays'][0]['win_probability'],1)
+        self.assertEqual(r['discards'][0]['win_probability'],0)
+
+    def test_adaptive_policy_does_not_inspect_future_draw_order(self):
+        cards=[card(r,s) for r,s in zip('2346789TJKQA','HDCSHDCSHDCS')]
+        s=state(cards[:3],cards[3:])
+        planner=RoundPlanner(Evaluator(s,cards),3,9,3,2,150)
+        self.assertFalse(planner.exact)
+        seen=[]
+        for permutation in [[0,1,2,3,4,5,6,7,8],[0,8,7,6,5,4,3,2,1]]:
+            events=[]
+            planner.simulate('discard',(0,),np.array([permutation]),5,
+                             trace=lambda step,rows,hand,mask,discard:events.append((hand,mask,discard)))
+            seen.append(events[1]) # Same observed draw, different unknown future order.
+        for left,right in zip(seen[0],seen[1]):
+            np.testing.assert_array_equal(left,right)
+
+    def test_intervals_and_resource_limits_for_large_round(self):
+        cards=[card(r,s) for r in '23456789TJQKA' for s in 'HDCS']
+        s=state(cards[:8],cards[8:])
+        planner=RoundPlanner(Evaluator(s,cards),8,44,4,3,5000)
+        events=[]
+        r=planner.simulate('discard',(0,1,2,3,4),
+                           np.argsort(np.random.default_rng(5).random((24,44)),axis=1),6,
+                           trace=lambda step,rows,hand,mask,discard:events.append((rows,discard)))
+        h=np.zeros(24);d=np.zeros(24)
+        for rows,discard in events:
+            h[rows]+=~discard;d[rows]+=discard
+        self.assertTrue(np.all(h<=4))
+        self.assertTrue(np.all(d<=3))
+        self.assertEqual(r['win_probability'],0)
+        self.assertGreater(r['win_interval_95'][1],0)
+
+    def test_discard_can_activate_mystic_summit_without_draw_cards(self):
+        cards=[card(r,s) for r,s in zip('AKJ97532','HDCSHDCS')]
+        j={'key':'j_mystic_summit','ability':{'extra':{'mult':15,'d_remaining':0}}}
+        s=state(cards,jokers=[j])
+        planner=RoundPlanner(Evaluator(s,cards),8,0,1,2,250)
+        self.assertFalse(planner.exact)
+        r=planner.simulate('discard',(7,),np.empty((16,0),int),7)
+        self.assertEqual(r['win_probability'],1)
+        self.assertEqual(r['expected_discards_used'],2)
+        self.assertEqual(r['expected_hands_to_win'],1)
+
     def test_all_options_and_reproducibility(self):
         s=state([card('2'),card('A')],[card('3'),card('4'),card('A','S')])
+        s['round']['hands_left']=1
         r=analyze(s,1000)
         self.assertEqual(r['discard_options'],3)
         self.assertTrue(all(c['trials']==1000 for c in r['discards']))
@@ -130,9 +240,10 @@ class MonteCarloTests(unittest.TestCase):
         s=state([card('2'),card('A')],[card('3'),card('4'),card('A','S')])
         partial=[]
         result=analyze(s,1000,progress=lambda done,total,value:partial.append(value))
-        self.assertEqual([p['completed'] for p in partial],[0,1,2,3])
+        self.assertEqual([p['completed'] for p in partial],list(range(7)))
         self.assertTrue(all(p['status']=='running' and p['partial'] for p in partial))
-        self.assertTrue(partial[0]['plays'])
+        self.assertFalse(partial[0]['plays'])
+        self.assertTrue(partial[1]['plays'])
         self.assertEqual(partial[-1]['recommendation'],result['recommendation'])
         self.assertFalse(result['partial'])
 
