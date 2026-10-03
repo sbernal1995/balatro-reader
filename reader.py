@@ -15,6 +15,12 @@ API = 'http://127.0.0.1:12346'
 RECORDS = Path(__file__).with_name('registros')
 DEFAULT_TRIALS = 20
 TRIAL_OPTIONS = (20, 100, 1000)
+ALGORITHMS = ('exhaustive', 'genetic')
+
+def simulation_algorithm(value='exhaustive'):
+    if value not in ALGORITHMS:
+        raise ValueError('Elegí comparar todas las opciones o usar la búsqueda genética.')
+    return value
 
 def simulation_trials(value=DEFAULT_TRIALS):
     if type(value) is not int or value not in TRIAL_OPTIONS:
@@ -125,14 +131,15 @@ class SimulationController:
         self.pending = None
         self.result = {'status':'idle','reason':'Presioná Simular para analizar esta mano.'}
 
-    def submit(self, data, trials=DEFAULT_TRIALS):
+    def submit(self, data, trials=DEFAULT_TRIALS, algorithm='exhaustive'):
         trials = simulation_trials(trials)
+        algorithm = simulation_algorithm(algorithm)
         data = copy.deepcopy({k:v for k,v in data.items() if k != 'registro'})
         with self.lock:
             self.generation += 1
-            self.pending = (self.generation,data,fingerprint(data),trials)
+            self.pending = (self.generation,data,fingerprint(data),trials,algorithm)
             self.result = {'status':'running','fingerprint':fingerprint(data),'completed':0,'total':0,
-                           'trials_per_option':trials}
+                           'trials_per_option':trials,'search_algorithm':algorithm}
             self.wakeup.set()
             return self.generation
 
@@ -156,7 +163,7 @@ class SimulationController:
                 self.wakeup.clear()
             if job is None:
                 continue
-            generation,data,signature,trials = job
+            generation,data,signature,trials,algorithm = job
             recorded_recommendation = None
             def cancelled():
                 current = self.current()
@@ -176,7 +183,7 @@ class SimulationController:
                 if record:
                     save_analysis(data,partial,'recomendacion-parcial.json')
             try:
-                result = analyze(data,trials=trials,progress=progress,cancelled=cancelled)
+                result = analyze(data,trials=trials,progress=progress,cancelled=cancelled,algorithm=algorithm)
                 if result.get('status') == 'superseded' or cancelled():
                     with self.lock:
                         if generation == self.generation:
@@ -358,6 +365,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(request, dict):
                 raise ValueError('La solicitud no es válida.')
             trials = simulation_trials(request.get('trials',DEFAULT_TRIALS)) if self.path == '/simulate' else None
+            algorithm = simulation_algorithm(request.get('algorithm','exhaustive')) if self.path == '/simulate' else None
             data = state()
             if data.get('state') != 'SELECTING_HAND' or (data.get('round') or {}).get('hands_left',0)<1:
                 raise ValueError('Esperando una mano disponible para jugar.')
@@ -371,8 +379,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/hidden-observation':
                 result, status = {'status':'recorded','inference':result},200
             else:
-                request_id = simulations.submit(data,trials=trials)
-                result, status = {'status':'running','request_id':request_id,'trials_per_option':trials},202
+                request_id = simulations.submit(data,trials=trials,algorithm=algorithm)
+                result, status = {'status':'running','request_id':request_id,'trials_per_option':trials,
+                                  'search_algorithm':algorithm},202
         except Exception as exc:
             result,status = {'status':'blocked','reason':str(exc)},409
         body=json.dumps(result).encode()

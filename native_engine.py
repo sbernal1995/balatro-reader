@@ -64,8 +64,15 @@ def request(payload, progress=None, cancelled=None):
         out.join(timeout=1);err.join(timeout=1)
         proc.stdout.close();proc.stderr.close()
 
-def analyze(state,trials=1000,seed=20261003,progress=None,cancelled=None):
+def analyze(state,trials=1000,seed=20261003,progress=None,cancelled=None,algorithm='exhaustive'):
+    if algorithm not in ('exhaustive','genetic'):
+        return {'status':'blocked','reason':'Algoritmo desconocido.'}
     r=state.get('round') or {}
     if state.get('state')!='SELECTING_HAND' or r.get('hands_left',0)<1:
         return {'status':'waiting','reason':'Esperando una mano disponible para jugar.'}
-    return request({'op':'analyze','state':state,'trials':trials,'seed':seed},progress,cancelled)
+    if algorithm == 'genetic':
+        catalog=request({'op':'catalog'},cancelled=cancelled)
+        if catalog.get('status') == 'superseded': return catalog
+        if algorithm not in catalog.get('search_modes',[]):
+            return {'status':'blocked','reason':'Actualizá el motor con Instalar.cmd para usar la búsqueda genética.'}
+    return request({'op':'analyze','state':state,'trials':trials,'seed':seed,'algorithm':algorithm},progress,cancelled)

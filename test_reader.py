@@ -43,9 +43,20 @@ class ManualSimulationTests(unittest.TestCase):
         with patch('reader.analyze',side_effect=lambda *args,**kwargs:
                 (finished.set() or {'status':'blocked'})) as engine:
             threading.Thread(target=self.controller.run,daemon=True).start()
-            self.controller.submit(self.data,trials=100)
+            self.controller.submit(self.data,trials=100,algorithm='genetic')
             self.assertTrue(finished.wait(1))
             self.assertEqual(engine.call_args.kwargs['trials'],100)
+            self.assertEqual(engine.call_args.kwargs['algorithm'],'genetic')
+
+    def test_invalid_algorithm_preserves_previous_job(self):
+        self.controller.submit(self.data,algorithm='genetic')
+        self.assertEqual(self.controller.pending[4],'genetic')
+        self.assertEqual(self.controller.view()['search_algorithm'],'genetic')
+        generation=self.controller.generation
+        for bad in ('fake',None,[],True,20):
+            with self.subTest(algorithm=bad),self.assertRaises(ValueError):
+                self.controller.submit(self.data,algorithm=bad)
+        self.assertEqual(self.controller.generation,generation)
 
     def test_simulate_endpoint_accepts_profiles_and_rejects_invalid_counts(self):
         server=ThreadingHTTPServer(('127.0.0.1',0),reader.Handler)
@@ -62,9 +73,12 @@ class ManualSimulationTests(unittest.TestCase):
                     with post(body) as response:
                         self.assertEqual(response.status,202)
                         self.assertEqual(json.load(response)['trials_per_option'],n)
-                    submit.assert_called_with(self.data,trials=n)
+                    submit.assert_called_with(self.data,trials=n,algorithm='exhaustive')
+                with post({'trials':20,'algorithm':'genetic'}) as response:
+                    self.assertEqual(json.load(response)['search_algorithm'],'genetic')
+                submit.assert_called_with(self.data,trials=20,algorithm='genetic')
                 calls=submit.call_count
-                for body in ({'trials':21},{'trials':True},[],{'trials':'1000'}):
+                for body in ({'trials':21},{'trials':True},[],{'trials':'1000'},{'algorithm':'fake'}):
                     with self.assertRaises(HTTPError) as error: post(body)
                     self.assertEqual(error.exception.code,409)
                     error.exception.close()

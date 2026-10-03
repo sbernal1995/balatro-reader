@@ -385,7 +385,7 @@ fn emit(value: &Value) {
     println!("{value}");
     io::stdout().flush().unwrap();
 }
-fn preference(a: &Value, b: &Value) -> std::cmp::Ordering {
+pub(crate) fn preference(a: &Value, b: &Value) -> std::cmp::Ordering {
     number(b, "win_probability", 0.)
         .total_cmp(&number(a, "win_probability", 0.))
         .then(
@@ -410,16 +410,60 @@ fn preference(a: &Value, b: &Value) -> std::cmp::Ordering {
         .then(a["slot"].to_string().cmp(&b["slot"].to_string()))
         .then(a["indices"].to_string().cmp(&b["indices"].to_string()))
 }
-pub fn analyze(state: &Value, run: Run, trials: usize, seed: u64) -> Value {
+fn genetic_seeds(run: &Run, actions: &[Move]) -> Vec<usize> {
+    let plays = short_plays(run);
+    let mut starts = plays.clone();
+    if let Some(best) = plays.first() {
+        starts.extend(discard_moves(run, best));
+    }
+    let mut seeds = vec![];
+    for m in starts {
+        if let Some(i) = actions
+            .iter()
+            .position(|a| a.action == m.action && a.indices == m.indices)
+        {
+            if !seeds.contains(&i) {
+                seeds.push(i);
+            }
+        }
+    }
+    let mut families = std::collections::BTreeMap::new();
+    for (i, m) in actions
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| !matches!(m.action.as_str(), "play" | "discard"))
+    {
+        let value = cheap_value(run, &m.indices);
+        let key = (m.action.as_str(), m.slot);
+        if families.get(&key).is_none_or(|(_, best)| value > *best) {
+            families.insert(key, (i, value));
+        }
+    }
+    seeds.extend(families.values().map(|&(i, _)| i));
+    seeds
+}
+pub fn analyze(state: &Value, run: Run, trials: usize, seed: u64, genetic: bool) -> Value {
     let started = Instant::now();
     let actions = root_moves(&run);
-    let total = actions.len();
+    let legal_total = actions.len();
+    let mut evolution = crate::genetic::Search::new(legal_total, seed);
+    let total = if genetic {
+        evolution.budget
+    } else {
+        legal_total
+    };
+    let mut batch = if genetic {
+        evolution.initial(&actions, &genetic_seeds(&run, &actions))
+    } else {
+        (0..legal_total).collect()
+    };
+    let mut evaluated = vec![];
     let h = run.hands_left();
     let d = run.discards_left();
     let target = (run.blind_chips() - run.chips()).max(0.);
     let initial_chips = run.chips();
     let mut results = Vec::<Value>::new();
-    let snapshot = |results: &Vec<Value>, done: usize, final_result: bool| {
+    let snapshot = |results: &Vec<Value>, done: usize, final_result: bool, generation: usize| {
         let mut ranked = results.clone();
         ranked.sort_by(preference);
         let select = |kind: &str| {
@@ -436,49 +480,65 @@ pub fn analyze(state: &Value, run: Run, trials: usize, seed: u64) -> Value {
    "special_actions":ranked.iter().filter(|r|r["action"]!="play"&&r["action"]!="discard").take(5).cloned().collect::<Vec<_>>(),
    "play_options":results.iter().filter(|r|r["action"]=="play").count(),"discard_options":results.iter().filter(|r|r["action"]=="discard").count(),
    "trials_per_option":trials,"target":target,"hands_left":h,"discards_left":d,
+   "search_algorithm":if genetic{"genetic"}else{"exhaustive"},"legal_options":legal_total,
+   "generation":generation,"generation_limit":if genetic{crate::genetic::GENERATIONS}else{1},
    "hand_number":number(&state["round"],"hands_played",0.) as usize+1,"hands_after_next_play":h-1,
    "discards_after_action":d-i64::from(best.is_some_and(|r|r["action"]=="discard")),
    "hand_cards":cards(state,"hand"),"joker_cards":cards(state,"jokers"),"consumable_cards":cards(state,"consumables"),
    "elapsed_seconds":started.elapsed().as_secs_f64(),"planning_mode":"full_rules_rollouts",
-   "scope":"Simula la ciega completa con las reglas del juego base: 150 comodines, 28 jefes, mejoras, ediciones, sellos y consumibles. Compara las primeras acciones; las continuaciones usan una estrategia aproximada, sin consultar el futuro de robo. El porcentaje no garantiza el óptimo global. Las cartas ocultas y el orden de comodines ocultos se muestrean como incertidumbre.",
+   "scope":format!("{} Simula la ciega completa con las reglas del juego base: 150 comodines, 28 jefes, mejoras, ediciones, sellos y consumibles. Las continuaciones usan una estrategia aproximada, sin consultar el futuro de robo. El porcentaje no garantiza el óptimo global. Las cartas ocultas y el orden de comodines ocultos se muestrean como incertidumbre.",if genetic{"Búsqueda genética: población de hasta 24 candidatos, selección, cruce, mutación y hasta 5 generaciones. Evalúa hasta 96 primeras acciones legales; puede omitir la mejor acción."}else{"Compara todas las primeras acciones legales."}),
    "score_mode":"Motor completo de reglas; fichas adicionales desde el estado actual y efectos aleatorios simulados."});
         if let Some(best) = best {
             value["recommendation"] = best.clone();
         }
         value
     };
-    emit(&snapshot(&results, 0, false));
+    emit(&snapshot(&results, 0, false, evolution.generation));
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
         .min(8)
         .min(total.max(1));
-    let cursor = std::sync::atomic::AtomicUsize::new(0);
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::scope(|scope| {
-        for _ in 0..threads {
-            let tx = tx.clone();
-            let actions = &actions;
-            let cursor = &cursor;
-            let run = &run;
-            scope.spawn(move || loop {
-                let i = cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if i >= actions.len() {
-                    break;
-                }
-                let result = evaluate(run, &actions[i], trials, seed, h, initial_chips);
-                if tx.send(result).is_err() {
-                    break;
-                }
-            });
+    while !batch.is_empty() {
+        let cursor = std::sync::atomic::AtomicUsize::new(0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                let tx = tx.clone();
+                let actions = &actions;
+                let batch = &batch;
+                let cursor = &cursor;
+                let run = &run;
+                scope.spawn(move || loop {
+                    let i = cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if i >= batch.len() {
+                        break;
+                    }
+                    let index = batch[i];
+                    let result = evaluate(run, &actions[index], trials, seed, h, initial_chips);
+                    if tx.send((index, result)).is_err() {
+                        break;
+                    }
+                });
+            }
+            drop(tx);
+            for (index, result) in rx {
+                evaluated.push((index, result.clone()));
+                results.push(result);
+                emit(&snapshot(
+                    &results,
+                    results.len(),
+                    false,
+                    evolution.generation,
+                ));
+            }
+        });
+        if !genetic {
+            break;
         }
-        drop(tx);
-        for result in rx {
-            results.push(result);
-            emit(&snapshot(&results, results.len(), false));
-        }
-    });
-    snapshot(&results, total, true)
+        batch = evolution.next(&actions, &evaluated, run.hand().len());
+    }
+    snapshot(&results, results.len(), true, evolution.generation)
 }
 
 fn preview_card(card: &Card) -> Value {

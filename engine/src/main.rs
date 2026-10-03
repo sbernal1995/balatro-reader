@@ -1,3 +1,4 @@
+mod genetic;
 mod import;
 mod search;
 use serde_json::{json, Value};
@@ -21,6 +22,7 @@ fn main() {
 fn dispatch(v: Value) -> Result<Value, String> {
     if v["op"] == "catalog" {
         return Ok(json!({
+  "search_modes":["exhaustive","genetic"],
   "jokers":balatro_core::items::JOKERS.iter().map(|j|j.key).collect::<Vec<_>>(),
   "bosses":balatro_core::blinds::BOSSES.iter().map(|b|b.key).collect::<Vec<_>>(),
   "consumables":balatro_core::items::TAROTS.iter().chain(balatro_core::items::PLANETS.iter()).chain(balatro_core::items::SPECTRALS.iter()).map(|c|c.key).collect::<Vec<_>>() }));
@@ -39,7 +41,17 @@ fn dispatch(v: Value) -> Result<Value, String> {
         "analyze" => {
             let trials = v["trials"].as_u64().unwrap_or(1000).clamp(1, 1000) as usize;
             let seed = v["seed"].as_u64().unwrap_or(20261003);
-            Ok(search::analyze(state, run, trials, seed))
+            let algorithm = v["algorithm"].as_str().unwrap_or("exhaustive");
+            if !matches!(algorithm, "exhaustive" | "genetic") {
+                return Err("Algoritmo desconocido.".into());
+            }
+            Ok(search::analyze(
+                state,
+                run,
+                trials,
+                seed,
+                algorithm == "genetic",
+            ))
         }
         _ => Err("Operación desconocida.".into()),
     }

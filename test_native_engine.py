@@ -193,6 +193,39 @@ class NativeEngineTests(unittest.TestCase):
         self.assertTrue(any(p.get('recommendation') for p in partials))
         self.assertEqual(analyze(s,1000,cancelled=lambda:True)['status'],'superseded')
 
+    def test_genetic_small_search_agrees_with_all_options_and_keeps_path(self):
+        s=fixture([card('2','S')]);s['draw_pool']['cards']=[card('3','H'),card('A','H')]
+        s['round'].update(hands_left=1,discards_left=2);s['blinds']['small']['score']=16
+        result=analyze(s,20,algorithm='genetic')
+        self.assertEqual(result['status'],'ready',result)
+        self.assertEqual(result['search_algorithm'],'genetic')
+        self.assertEqual(result['completed'],result['legal_options'])
+        self.assertEqual(result['recommendation'],analyze(s,20)['recommendation'])
+        self.assertEqual([x['action'] for x in result['recommendation']['winning_sequence']['steps']],['discard','play'])
+
+    def test_genetic_budget_generations_legal_moves_and_reproducibility(self):
+        s=fixture([card(r,p) for r,p in [('A','S'),('A','H'),('K','C'),('Q','D'),('J','H'),('T','C'),('8','S'),('2','D')]])
+        s['round'].update(hands_left=1,discards_left=0);s['draw_pool']['cards']=[]
+        partials=[];before=copy.deepcopy(s)
+        result=analyze(s,5,algorithm='genetic',progress=lambda *a:partials.append(a[2]))
+        self.assertEqual(result['status'],'ready',result)
+        self.assertEqual(s,before)
+        self.assertEqual((result['completed'],result['total'],result['generation']),(96,96,5))
+        self.assertGreater(result['legal_options'],96)
+        self.assertEqual({p['generation'] for p in partials},{1,2,3,4,5})
+        self.assertEqual([p['completed'] for p in partials],list(range(97)))
+        legal=request({'op':'moves','state':s})
+        for option in result['plays']:
+            self.assertTrue(any(m['action']==option['action'] and [i+1 for i in m['indices']]==option['indices'] for m in legal))
+        self.assertEqual(result['recommendation'],analyze(s,5,algorithm='genetic')['recommendation'])
+
+    def test_genetic_old_engine_is_explicit_and_does_not_start_another_search(self):
+        with patch('native_engine.request',return_value={'jokers':[]}) as engine:
+            result=analyze(fixture(),20,algorithm='genetic')
+        self.assertEqual(result['status'],'blocked')
+        self.assertIn('Instalar.cmd',result['reason'])
+        engine.assert_called_once()
+
     def test_unknown_modded_content_is_explained(self):
         s=fixture(jokers=[joker('j_fake_mod')]);r=analyze(s,1)
         self.assertEqual(r['status'],'blocked')
