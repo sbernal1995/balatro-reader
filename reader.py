@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, parse_qs
 from native_engine import analyze
 from synergies import LIBRARY, JOKERS, evaluate as evaluate_synergies
+from hidden_cards import HiddenCardTracker
 
 API = 'http://127.0.0.1:12346'
 RECORDS = Path(__file__).with_name('registros')
@@ -41,6 +42,8 @@ recorder = Recorder()
 cache_lock = threading.Lock()
 cached = None
 problem = 'Esperando conexión con Balatro'
+hidden_tracker = HiddenCardTracker()
+state_lock = threading.Lock()
 def fingerprint(data):
     """Compare gameplay inputs, following the native engine's import contract.
 
@@ -53,7 +56,7 @@ def fingerprint(data):
         return {k:value[k] for k in keys if k in value}
 
     def card_value(card):
-        value = fields(card, ('id','key','modifier'))
+        value = fields(card, ('id','key','modifier','tracking_token'))
         value['value'] = fields(card.get('value'), ('rank','suit'))
         value['state'] = fields(card.get('state'), ('hidden','debuff','forced_selection'))
         value['ability'] = fields(card.get('ability'), (
@@ -177,11 +180,17 @@ def monitor():
                 cached = dict(data, registro={'guardado_en': recorder.saved_at, 'cambios': recorder.total})
                 problem = None
         except Exception as exc:
+            hidden_tracker.reset()
             with cache_lock:
                 problem = str(exc)
         threading.Event().wait(1)
 
 def state():
+    with state_lock:
+        return read_state()
+
+
+def read_state():
     payload = json.dumps(dict(jsonrpc='2.0', method='gamestate', params={}, id=1)).encode()
     with urlopen(Request(API, payload, {'Content-Type': 'application/json'}), timeout=3) as r:
         result = json.load(r)
@@ -196,13 +205,14 @@ def state():
             for field in ('state','value','modifier','cost','ability'):
                 if not isinstance(card.get(field),dict):
                     card[field] = {}
+    hidden_tracker.prepare(data)
     # Anonymous belief bags: hidden identities cannot be mapped back to a slot.
     hidden_cards = [copy.deepcopy(c) for c in (data.get('hand') or {}).get('cards', [])
                     if (c.get('state') or {}).get('hidden')]
     if hidden_cards:
         bag = hidden_cards + copy.deepcopy((data.get('cards') or {}).get('cards', []))
         for card in bag:
-            for field in ('id', 'runtime', 'state'):
+            for field in ('id', 'runtime', 'state', 'tracking_token'):
                 card.pop(field, None)
             (card.get('ability') or {}).pop('forced_selection', None)
         data['unseen_cards'] = sorted(bag, key=lambda c: json.dumps(c,sort_keys=True))
@@ -248,9 +258,13 @@ def state():
                     card[field] = {}
             if card['state'].get('hidden'):
                 flags = card['state']
+                token = card.get('tracking_token')
                 forced = bool((card.get('ability') or {}).get('forced_selection'))
                 card.clear()
                 card.update(label='Carta oculta', state=dict(flags,forced_selection=forced))
+                if token:
+                    card['tracking_token'] = token
+    data['hidden_inference'] = hidden_tracker.view()
     return data
 
 class Handler(BaseHTTPRequestHandler):
@@ -288,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/':
             body = Path(__file__).with_name('index.html').read_bytes()
             status, kind = 200, 'text/html; charset=utf-8'
-        elif self.path in ('/synergies.js','/synergies.css'):
+        elif self.path in ('/synergies.js','/synergies.css','/hidden-cards.js','/hidden-cards.css'):
             body = Path(__file__).with_name(self.path[1:]).read_bytes()
             status = 200
             kind = 'text/javascript; charset=utf-8' if self.path.endswith('.js') else 'text/css; charset=utf-8'
@@ -304,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global cached, problem
-        if self.path != '/simulate':
+        if self.path not in ('/simulate', '/hidden-observation'):
             self.send_error(404)
             return
         # Browser-triggered writes are restricted to this local panel.
@@ -313,14 +327,28 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(403)
             return
         try:
+            if self.path == '/hidden-observation':
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1024:
+                    raise ValueError('La observación no es válida.')
+                request = json.loads(self.rfile.read(length))
+                if not isinstance(request, dict):
+                    raise ValueError('La observación no es válida.')
             data = state()
             if data.get('state') != 'SELECTING_HAND' or (data.get('round') or {}).get('hands_left',0)<1:
                 raise ValueError('Esperando una mano disponible para jugar.')
+            if self.path == '/hidden-observation':
+                hand_id = request.get('hand_id')
+                result = hidden_tracker.clear(hand_id) if request.get('mode') == 'clear' else hidden_tracker.capture(request.get('mode'), hand_id)
+                data['hidden_inference'] = result
             with cache_lock:
                 cached = dict(data,registro={'guardado_en':recorder.saved_at,'cambios':recorder.total})
                 problem = None
-            request_id = simulations.submit(data)
-            result, status = {'status':'running','request_id':request_id},202
+            if self.path == '/hidden-observation':
+                result, status = {'status':'recorded','inference':result},200
+            else:
+                request_id = simulations.submit(data)
+                result, status = {'status':'running','request_id':request_id},202
         except Exception as exc:
             result,status = {'status':'blocked','reason':str(exc)},409
         body=json.dumps(result).encode()

@@ -39,6 +39,22 @@ Las recomendaciones muestran cartas por valor y palo, por ejemplo **As ♠** o *
 
 La comparación usa los datos de juego que importa el motor: cartas y orden, recursos, valores de comodines, niveles, contadores y reglas de la ciega. Los temporizadores, movimientos de la interfaz, descripciones y vistas previas de manos no cancelan la simulación.
 
+## Identificar cartas dadas vuelta
+
+Si hay cartas ocultas en la mano, aparece **¿Qué carta está dada vuelta?**:
+
+1. En Balatro, pulsá **Categoría** y luego **Registrar Categoría** en el panel.
+2. En Balatro, pulsá **Palo** y luego **Registrar Palo** en el panel.
+3. Cada oculta conserva una letra al moverse. Consultá los valores, palos y dibujos de las cartas compatibles con ambos órdenes.
+
+Las deducciones usan las cartas visibles y la posición de cada oculta en los órdenes descendentes estándar del juego. No leen el valor, palo ni mejora de la carta oculta y no usan la composición anónima del mazo para reducir las posibilidades. Admiten cartas repetidas y contemplan el orden especial de las cartas Piedra; una Piedra visible tampoco revela su valor o palo interno al identificador.
+
+Se propagan los límites entre cartas hasta que dejan de cambiar. El resultado conserva todas las posibilidades factibles y puede conservar opciones adicionales cuando hay varias ocultas. No asigna porcentajes. Una única combinación es una deducción condicionada a haber registrado los órdenes correctos. La lista de cartas muestra las combinaciones reales del resultado; cruzar todos los valores con todos los palos de las filas puede producir combinaciones que no aparecen en esa lista.
+
+Registrá después de pulsar el botón de ordenar del juego y de que las cartas terminen de moverse. Si las arrastraste manualmente, volvé a ordenar. Se rechazan órdenes incompatibles con las cartas visibles o con la otra observación. Los mods que cambian el orden estándar quedan fuera de este identificador.
+
+Las observaciones se borran al jugar, descartar, usar un consumible, cambiar o revelar cartas, salir de la selección de mano o perder la conexión. **Borrar observaciones** permite empezar de nuevo. Se guardan con las capturas del lector; son temporales durante esa sesión y no se restauran al reiniciarlo. El simulador sigue usando su bolsa anónima y todavía no condiciona sus tiradas con estas pistas. Esta función solo registra la lectura y no pulsa botones ni juega cartas en Balatro.
+
 ## Builds y tienda
 
 La sección **Qué aporta la tienda** incluye 12 builds investigadas en internet, con enlaces a sus fuentes, piezas presentes y piezas faltantes. Podés detectar una estrategia con tus comodines o elegir una build objetivo; la preferencia se conserva en el navegador.
@@ -67,7 +83,7 @@ Con Rust estable y las herramientas de compilación de la plataforma:
 cargo test --manifest-path engine/Cargo.toml --workspace --release --locked
 cargo build --manifest-path engine/Cargo.toml --release --locked
 uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator test_synergies test_lua_snapshot -v
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator test_synergies test_lua_snapshot test_hidden_cards -v
 ```
 
 Las pruebas del núcleo cubren evaluación de manos, puntuación, comodines, jefes, consumibles, sellos, economía y aleatoriedad. Las pruebas de integración recorren los 150 comodines, 28 jefes y 52 consumibles y verifican importación de valores actuales, copias, eternos, restricciones, cartas ocultas, consumibles, descartes encadenados, resultados parciales y cancelación. GitHub ejecuta las pruebas en Windows y Linux. El evaluador anterior de Python queda como referencia de regresión; el panel utiliza el motor Rust.

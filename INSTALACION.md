@@ -62,6 +62,8 @@ Hacé doble clic en **Iniciar.cmd**. Se abre Balatro con la API y el panel en [h
 4. Jugá, descartá, usá o vendé la carta indicada en Balatro. Cuando cambia el estado, la recomendación anterior se retira.
 5. Pulsá **Simular** nuevamente para calcular con las cartas reales, las fichas que faltan y las manos y descartes restantes.
 
+Cuando tengas cartas dadas vuelta, aparece **¿Qué carta está dada vuelta?** debajo de la mano. Pulsá **Categoría** en Balatro y **Registrar Categoría** en el panel; repetí con **Palo** y **Registrar Palo**. Las cartas ocultas conservan una letra al moverse y muestran valores, palos y cartas dibujadas compatibles con esos órdenes. Ordená de nuevo si arrastraste cartas manualmente. Las pistas se borran al cambiar la mano o realizar una acción y todavía no condicionan las tiradas del simulador.
+
 El cálculo compara jugar, descartar, usar consumibles y vender cartas mediante **1000 rondas simuladas por opción**, con todas las manos y descartes restantes. Incorpora los **150 comodines, 28 ciegas jefe y 52 consumibles**, mejoras, ediciones y sellos. Usa los niveles, probabilidades, contadores y habilidades actuales. Prioriza ganar la ciega y luego necesitar menos manos. Las continuaciones son aproximadas; el porcentaje no garantiza el óptimo global. Puede tardar varios minutos con ocho cartas y varios recursos. Consultá [README.md](README.md) para conocer el alcance.
 
 Para usar la API, abrí el juego mediante **Iniciar.cmd**. Si ya lo abriste desde Steam sin la API, cerralo y usá ese acceso. Podés cerrar el panel sin detener el lector; para terminar por completo, cerrá Balatro y los procesos del lector en el Administrador de tareas.
@@ -99,7 +101,7 @@ Después de instalar, desde la carpeta del proyecto:
 
 ```powershell
 uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader test_synergies test_lua_snapshot -v
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader test_synergies test_lua_snapshot test_hidden_cards -v
 ```
 
 Para desarrollo, `Instalar.cmd -SkipModInstall` prepara las dependencias y detecta el juego sin reinstalar los mods. El instalador y el lanzador están preparados para Windows; no incluyen un flujo de instalación para macOS o Linux.
