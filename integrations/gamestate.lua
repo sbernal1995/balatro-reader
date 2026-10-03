@@ -449,6 +449,7 @@ local function extract_hand_info(hands)
       mult = hand.mult or 0,
       played = hand.played or 0,
       played_this_round = hand.played_this_round or 0,
+      visible = hand.visible,
       example = hand.example or {},
     }
   end
@@ -755,6 +756,7 @@ function gamestate.get_gamestate()
 
   local state_data = {
     state = get_state_name(G.STATE),
+    reader_schema = 2,
   }
 
   -- Basic game info
@@ -763,6 +765,15 @@ function gamestate.get_gamestate()
     state_data.ante_num = (G.GAME.round_resets and G.GAME.round_resets.ante) or 0
     state_data.money = G.GAME.dollars or 0
     state_data.won = G.GAME.won
+    -- Restrict random joker creation to the actual profile and challenge pool.
+    state_data.excluded_jokers = {}
+    for key, center in pairs(G.P_CENTERS or {}) do
+      if center.set == 'Joker' and ((center.unlocked == false and center.rarity ~= 4)
+          or (G.GAME.banned_keys and G.GAME.banned_keys[key])) then
+        state_data.excluded_jokers[#state_data.excluded_jokers + 1] = key
+      end
+    end
+    table.sort(state_data.excluded_jokers)
 
     -- Deck (optional)
     if G.GAME.selected_back and G.GAME.selected_back.effect and G.GAME.selected_back.effect.center then
@@ -815,11 +826,26 @@ function gamestate.get_gamestate()
       skips = G.GAME.skips,
       unused_discards = G.GAME.unused_discards,
       pool_flags = G.GAME.pool_flags,
+      ecto_minus = G.GAME.ecto_minus,
+      interest_cap = G.GAME.interest_cap,
+      interest_amount = G.GAME.interest_amount,
+      discount_percent = G.GAME.discount_percent,
+      edition_rate = G.GAME.edition_rate,
+      playing_card = G.playing_card,
       current_hand = G.GAME.current_hand,
       blind = G.GAME.blind and {
         name = G.GAME.blind.name, boss = G.GAME.blind.boss,
         disabled = G.GAME.blind.disabled, chips = G.GAME.blind.chips},
     })
+    local b = G.GAME.blind
+    if b then
+      state_data.active_blind = snapshot({
+        key = b.config and b.config.blind and b.config.blind.key,
+        chips = b.chips, disabled = b.disabled, triggered = b.triggered,
+        prepped = b.prepped, hands = b.hands, only_hand = b.only_hand,
+        discards_sub = b.discards_sub, hands_sub = b.hands_sub,
+      })
+    end
 
     -- Poker hands
     if G.GAME.hands then
@@ -831,6 +857,11 @@ function gamestate.get_gamestate()
 
     -- Blinds info
     state_data.blinds = gamestate.get_blinds_info()
+    for _, blind in pairs(state_data.blinds) do
+      if blind.status == "CURRENT" and G.GAME.blind then
+        blind.score = G.GAME.blind.chips or blind.score
+      end
+    end
   end
 
   -- Always available areas
@@ -850,6 +881,9 @@ function gamestate.get_gamestate()
   -- Cards remaining in deck
   if G.deck then
     state_data.cards = extract_area(G.deck)
+  end
+  if G.discard then
+    state_data.discard_pool = extract_area(G.discard)
   end
 
   -- Hand (count is 0 during not playing phase)

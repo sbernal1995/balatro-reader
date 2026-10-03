@@ -1,0 +1,2 @@
+# Trailing TSV tabs represent intentionally empty fixture columns.
+engine/vendor/balatro-core/tests/data/*.tsv whitespace=-blank-at-eol

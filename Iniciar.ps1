@@ -3,7 +3,8 @@ $project = $PSScriptRoot
 $configPath = Join-Path $project 'config.local.json'
 $python = Join-Path $project '.venv\Scripts\python.exe'
 $cli = Join-Path $project '.venv\Scripts\balatrobot.exe'
-if (-not (Test-Path -LiteralPath $configPath) -or -not (Test-Path -LiteralPath $python)) {
+$engine = Join-Path $project 'engine\target\release\balatro-reader-engine.exe'
+if (-not (Test-Path -LiteralPath $configPath) -or -not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $engine)) {
     Write-Host 'Primero ejecuta Instalar.cmd. Consulta INSTALACION.md.'
     exit 1
 }

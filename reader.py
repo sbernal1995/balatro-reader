@@ -1,4 +1,4 @@
-"""Local, read-only Balatro dashboard with NumPy Monte Carlo analysis."""
+"""Local, read-only Balatro dashboard with an offline rules engine."""
 import json
 import copy
 import threading
@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import Request, urlopen
-from simulator import analyze
+from native_engine import analyze
 
 API = 'http://127.0.0.1:12346'
 RECORDS = Path(__file__).with_name('registros')
@@ -144,13 +144,40 @@ def state():
     if 'error' in result:
         raise RuntimeError(result['error'].get('message', 'Error de API'))
     data = result['result']
+    for area_key in ('hand','jokers','consumables','cards','discard_pool'):
+        area = data.get(area_key)
+        if not isinstance(area,dict):
+            data[area_key] = {'cards':area if isinstance(area,list) else []}
+        for card in data[area_key].get('cards',[]):
+            for field in ('state','value','modifier','cost','ability'):
+                if not isinstance(card.get(field),dict):
+                    card[field] = {}
+    # Anonymous belief bags: hidden identities cannot be mapped back to a slot.
+    hidden_cards = [copy.deepcopy(c) for c in (data.get('hand') or {}).get('cards', [])
+                    if (c.get('state') or {}).get('hidden')]
+    if hidden_cards:
+        bag = hidden_cards + copy.deepcopy((data.get('cards') or {}).get('cards', []))
+        for card in bag:
+            for field in ('id', 'runtime', 'state'):
+                card.pop(field, None)
+            (card.get('ability') or {}).pop('forced_selection', None)
+        data['unseen_cards'] = sorted(bag, key=lambda c: json.dumps(c,sort_keys=True))
+    hidden_jokers = [copy.deepcopy(c) for c in (data.get('jokers') or {}).get('cards', [])
+                     if (c.get('state') or {}).get('hidden')]
+    if hidden_jokers:
+        for card in hidden_jokers:
+            card.pop('id',None)
+            card.pop('runtime',None)
+            if isinstance(card.get('state'),dict):
+                card['state'].pop('highlight',None)
+        data['unknown_jokers'] = sorted(hidden_jokers,key=lambda c:json.dumps(c,sort_keys=True))
     # Do not expose the draw pile or identities of face-down cards.
     pool = data.pop('cards', None)
     if isinstance(pool, dict):
         # Composition only: never expose or use the future draw order.
         pool['cards'] = sorted(pool.get('cards', []), key=lambda c: c.get('id', 0))
         for card in pool['cards']:
-            card['state'] = {}
+            card['state'] = dict(card.get('state') or {},hidden=False)
         data['draw_pool'] = pool
     for key in ('hand', 'jokers', 'consumables', 'shop', 'pack', 'collection'):
         if key not in data:
@@ -165,8 +192,9 @@ def state():
                     card[field] = {}
             if card['state'].get('hidden'):
                 flags = card['state']
+                forced = bool((card.get('ability') or {}).get('forced_selection'))
                 card.clear()
-                card.update(label='Carta oculta', state=flags)
+                card.update(label='Carta oculta', state=dict(flags,forced_selection=forced))
     return data
 
 class Handler(BaseHTTPRequestHandler):

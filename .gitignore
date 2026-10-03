@@ -12,5 +12,6 @@ __pycache__/
 *.bak
 *.tmp
 config.local.json
+engine/target/
 .env
 .env.*

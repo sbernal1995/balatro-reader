@@ -34,10 +34,11 @@ Si no tenés `winget`, consultá las alternativas de la [documentación oficial 
 Cerrá Balatro y hacé doble clic en **Instalar.cmd**. El instalador:
 
 1. Busca el juego en las bibliotecas de Steam.
-2. Prepara Python 3.13 y las dependencias dentro del proyecto.
-3. Descarga Lovely 0.10.0, Steamodded 26.1002.0 y una versión fijada de BalatroBot.
-4. Instala los mods y copia la ampliación que permite leer la baraja completa, el uso de consumibles y los valores de los comodines.
-5. Guarda la ruta de tu juego en `config.local.json`.
+2. Descarga el motor de reglas para Windows de 64 bits y verifica su SHA-256. No hace falta instalar Rust ni un compilador.
+3. Prepara Python 3.13 y las dependencias dentro del proyecto.
+4. Descarga Lovely 0.10.0, Steamodded 26.1002.0 y una versión fijada de BalatroBot.
+5. Instala los mods y copia la ampliación que permite leer la baraja completa, el uso de consumibles y los valores de los comodines.
+6. Guarda la ruta de tu juego en `config.local.json`.
 
 Si el juego está en una carpeta que no se detecta, abrí una terminal dentro de la carpeta del proyecto y ejecutá, reemplazando la ruta por la tuya:
 
@@ -56,10 +57,10 @@ Hacé doble clic en **Iniciar.cmd**. Se abre Balatro con la API y el panel en [h
 1. Empezá o continuá una partida.
 2. Con las cartas en la mano, pulsá **Simular**.
 3. Mirá los resultados parciales y esperá la recomendación final. Las cartas se muestran por valor y palo, por ejemplo **As ♠** o **J ♥**.
-4. Jugá o descartá en Balatro. Cuando cambia el estado, la recomendación anterior se retira.
+4. Jugá, descartá, usá o vendé la carta indicada en Balatro. Cuando cambia el estado, la recomendación anterior se retira.
 5. Pulsá **Simular** nuevamente para calcular con las cartas reales, las fichas que faltan y las manos y descartes restantes.
 
-El cálculo compara las primeras jugadas y descartes mediante **1000 rondas simuladas por opción**, usando todas las manos y descartes restantes, sin usar el orden real de la pila. Prioriza la mayor probabilidad de ganar la ciega y luego menos manos para conseguirlo. Permite encadenar descartes y aplica las pérdidas de Mult del Comodín verde. El panel muestra el porcentaje de ganar con una mano, con hasta dos, etc. En estados grandes las decisiones futuras se aproximan; el porcentaje no garantiza la estrategia óptima. Puede tardar varios minutos con ocho cartas y varios recursos. Los efectos todavía sin implementar se indican en el panel y bloquean la recomendación.
+El cálculo compara jugar, descartar, usar consumibles y vender cartas mediante **1000 rondas simuladas por opción**, con todas las manos y descartes restantes. Incorpora los **150 comodines, 28 ciegas jefe y 52 consumibles**, mejoras, ediciones y sellos. Usa los niveles, probabilidades, contadores y habilidades actuales. Prioriza ganar la ciega y luego necesitar menos manos. Las continuaciones son aproximadas; el porcentaje no garantiza el óptimo global. Puede tardar varios minutos con ocho cartas y varios recursos. Consultá [README.md](README.md) para conocer el alcance.
 
 Para usar la API, abrí el juego mediante **Iniciar.cmd**. Si ya lo abriste desde Steam sin la API, cerralo y usá ese acceso. Podés cerrar el panel sin detener el lector; para terminar por completo, cerrá Balatro y los procesos del lector en el Administrador de tareas.
 
@@ -81,7 +82,8 @@ Estos archivos, la configuración local y las dependencias se excluyen del repos
 | No se encuentra Balatro | Usá `-BalatroPath` con la carpeta del juego. |
 | Sin conexión en el panel | Cerrá Balatro y volvé a abrirlo con `Iniciar.cmd`. Revisá `game-error.log` y `reader-error.log` si persiste. |
 | Faltan baraja o contadores internos | Ejecutá `Instalar.cmd` con el juego cerrado y volvé a abrirlo. |
-| No aparece una recomendación | Verificá el motivo en el panel; puede faltar un efecto de un comodín o de la ciega jefe. |
+| No aparece una recomendación | Leé el motivo del panel. Actualizá el mod si falta la clave del jefe o el contexto; las cartas de mods adicionales no están admitidas. |
+| Falta el motor o la descarga no coincide | Descargá el proyecto actualizado y volvé a ejecutar `Instalar.cmd`. |
 | El cálculo se interrumpe | La partida cambió durante la simulación. Pulsá **Simular** otra vez. |
 | Los puertos están ocupados | Cerrá la otra instancia del lector o el programa que ocupa 8765 o 12346. |
 
@@ -94,7 +96,10 @@ Descargá la nueva versión o ejecutá `git pull` si clonaste el repositorio. Co
 Después de instalar, desde la carpeta del proyecto:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest test_simulator test_reader -v
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader -v
 ```
 
 Para desarrollo, `Instalar.cmd -SkipModInstall` prepara las dependencias y detecta el juego sin reinstalar los mods. El instalador y el lanzador están preparados para Windows; no incluyen un flujo de instalación para macOS o Linux.
+
+
+El motor compilado se publica en [Releases](https://github.com/sbernal1995/balatro-reader/releases). El instalador usa la versión fijada y el SHA-256 de `Instalar.ps1`. Para modificar el motor necesitás Rust estable y Visual Studio Build Tools con C++ en Windows; las instrucciones de compilación están en README.md.

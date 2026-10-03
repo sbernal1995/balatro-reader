@@ -11,6 +11,8 @@ $configPath = Join-Path $project 'config.local.json'
 $deps = Join-Path $project '.deps'
 $downloads = Join-Path $project '.downloads'
 $upstream = Join-Path $deps 'balatrobot'
+$engineVersion = 'v0.2.0'
+$engineHash = 'F39CA0AF3C7559D497F88182753017640A8A000370960C67967F63C48B62B752'
 
 function Find-Balatro {
     $candidates = [System.Collections.Generic.List[string]]::new()
@@ -74,6 +76,18 @@ if ((Get-Process -Name Balatro -ErrorAction SilentlyContinue) -and -not $SkipMod
 }
 $game = Find-Balatro
 New-Item -ItemType Directory -Path $deps, $downloads -Force | Out-Null
+$engineDir = Join-Path $project 'engine\target\release'
+$enginePath = Join-Path $engineDir 'balatro-reader-engine.exe'
+New-Item -ItemType Directory -Path $engineDir -Force | Out-Null
+if (-not (Test-Path -LiteralPath $enginePath) -or (Get-FileHash -LiteralPath $enginePath -Algorithm SHA256).Hash -ne $engineHash) {
+    Write-Host 'Descargando el motor de reglas de Balatro...'
+    $engineDownload = Join-Path $downloads 'balatro-reader-engine-windows-x64.exe'
+    Invoke-WebRequest -Uri "https://github.com/sbernal1995/balatro-reader/releases/download/$engineVersion/balatro-reader-engine-windows-x64.exe" -OutFile $engineDownload -UseBasicParsing
+    if ((Get-FileHash -LiteralPath $engineDownload -Algorithm SHA256).Hash -ne $engineHash) {
+        throw 'El motor descargado no coincide con la version verificada. Volve a descargar el proyecto.'
+    }
+    Copy-Item -LiteralPath $engineDownload -Destination $enginePath -Force
+}
 
 if (-not (Test-Path -LiteralPath (Join-Path $upstream 'pyproject.toml'))) {
     $extracted = Fetch-Zip "https://codeload.github.com/coder/balatrobot/zip/$commit" 'balatrobot-pinned'
