@@ -15,7 +15,7 @@ El motor cubre el contenido del juego base:
 - **22 Tarot, 12 planetas y 18 espectrales**, con selección de objetivos, copia, mejora, destrucción, creación de cartas y cambios de niveles, dinero y recursos. La Muerte compara ambas direcciones de copia.
 - Interacciones con los vales ya adquiridos, probabilidades actuales y límites reales de mano, comodines y consumibles. Incluye puntuación de la baraja Plasma.
 
-[Catálogo de contenido y ubicación de las reglas](REGLAS.md). La búsqueda también compara **usar consumibles y vender comodines o consumibles** durante la ciega. Por ejemplo, vender un comodín puede desactivar La Hoja, vender al Luchador puede desactivar un jefe y una venta puede aumentar Fogata. Respeta comodines eternos, incluidos Ankh y Hex.
+[Catálogo de contenido y ubicación de las reglas](REGLAS.md). La búsqueda también compara **usar consumibles y vender comodines o consumibles** durante la ciega. Por ejemplo, vender un comodín puede desactivar La Hoja, vender al Luchador puede desactivar un jefe y una venta puede aumentar Fogata. Respeta comodines eternos, incluidos Ankh y Hex, el valor de venta y cobro de alquiler, y la caducidad de los perecederos. Las copias conservan esas pegatinas.
 
 ## Cómo decide
 

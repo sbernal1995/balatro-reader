@@ -98,11 +98,25 @@ pub struct OwnedJoker {
     /// check it and the copy paths (Ankh/Invisible) carry it
     /// (copy_card copies the whole ability table, common_events.lua:2161).
     pub eternal: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub rental: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub perish_tally: Option<i64>,
     /// `ability.hands_played_at_create` (card.lua:337) — Loyalty Card's
     /// anchor; copies inherit the source value.
     pub hands_at_create: i64,
     /// Mutable ability state (counters/accumulators; see `JokerState`).
     pub state: JokerState,
+}
+
+impl OwnedJoker {
+    pub fn sell_value(&self, discount_percent: i64) -> i64 {
+        if self.rental {
+            1 + self.extra_value
+        } else {
+            items::sell_cost(self.id.meta().cost, self.edition, discount_percent, self.extra_value)
+        }
+    }
 }
 
 /// A held consumable instance.
@@ -442,6 +456,8 @@ impl Run {
             debuffed: false,
             flipped: false,
             eternal: false,
+            rental: false,
+            perish_tally: None,
             hands_at_create: self.hands_played_total,
             state,
         }
@@ -1379,6 +1395,8 @@ impl Run {
             debuffed: false,
             flipped: false,
             eternal: false,
+            rental: false,
+            perish_tally: None,
             hands_at_create: self.hands_played_total,
             state,
         });
@@ -1499,12 +1517,7 @@ impl Run {
 
     /// Current sell value of a held joker.
     pub fn joker_sell_value(&self, j: &OwnedJoker) -> i64 {
-        items::sell_cost(
-            j.id.meta().cost,
-            j.edition,
-            self.discount_percent,
-            j.extra_value,
-        )
+        j.sell_value(self.discount_percent)
     }
 
     /// Current sell value of a held consumable. With Astronomer a Planet's

@@ -191,6 +191,8 @@ pub struct Run {
     pub(crate) reader_starting_deck_size: usize,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) reader_excluded_jokers: HashSet<String>,
+    #[cfg_attr(feature = "serde", serde(default = "crate::reader_bridge::reader_rental_rate"))]
+    pub(crate) reader_rental_rate: i64,
     pub(crate) rng: RngState,
     pub(crate) state: State,
 
@@ -381,6 +383,7 @@ impl Run {
             reader_plasma: false,
             reader_starting_deck_size: 52,
             reader_excluded_jokers: HashSet::new(),
+            reader_rental_rate: 3,
             rng,
             state: State::BlindSelect,
             deck: Vec::new(),
@@ -1073,6 +1076,7 @@ impl Run {
             let saved = hooks.end_of_round(&self.hands_table, game_over, &mut self.rng);
             (saved, hooks.out)
         };
+        self.reader_finish_stickers();
         self.apply_joker_outbox(out);
         #[cfg(feature = "p5-debug")]
         eprintln!("end_round: saved={saved}");
@@ -1731,6 +1735,7 @@ impl Run {
     /// toggles the passive add_to_deck effects (`from_debuff = true` leaves
     /// negative slots alone via queue_negative_removal).
     pub(crate) fn set_joker_debuffed(&mut self, idx: usize, debuff: bool) {
+        let debuff = debuff || self.jokers[idx].perish_tally == Some(0);
         if self.jokers[idx].debuffed == debuff {
             return;
         }

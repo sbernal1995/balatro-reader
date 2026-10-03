@@ -831,6 +831,7 @@ function gamestate.get_gamestate()
       interest_amount = G.GAME.interest_amount,
       discount_percent = G.GAME.discount_percent,
       edition_rate = G.GAME.edition_rate,
+      rental_rate = G.GAME.rental_rate,
       playing_card = G.playing_card,
       current_hand = G.GAME.current_hand,
       blind = G.GAME.blind and {

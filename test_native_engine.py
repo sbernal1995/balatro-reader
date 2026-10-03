@@ -158,6 +158,26 @@ class NativeEngineTests(unittest.TestCase):
         self.assertEqual(r['recommendation']['action'],'use')
         self.assertEqual(r['recommendation']['expected_inventory_spent'],1)
 
+    def test_rental_prices_fees_and_perishable_expiry(self):
+        s=fixture([card('A')],[joker('j_swashbuckler'),joker('j_baron',rental=True)])
+        self.assertEqual(self.play(s)['last_play']['score'],32)
+        sold=self.invoke(s,{'action':'sell_joker','indices':[],'slot':1})
+        self.assertEqual(sold['dollars'],21)
+        s=fixture([card('A')],[joker('j_joker',rental=True,perishable=True,perish_tally=1)])
+        s['blinds']['small']['score']=16
+        s['joker_context']['rental_rate']=4
+        r=self.play(s)
+        self.assertEqual(r['dollars'],16)
+        self.assertEqual(r['jokers'][0]['perish_tally'],0)
+        self.assertTrue(r['jokers'][0]['debuffed'])
+
+    def test_spectral_copies_keep_rental_and_perishable_stickers(self):
+        s=fixture(jokers=[joker('j_joker',rental=True,perishable=True,perish_tally=3)])
+        s['consumables']['cards']=[consumable('c_ankh')]
+        r=self.invoke(s,{'action':'use','indices':[],'slot':0})
+        self.assertEqual(len(r['jokers']),2)
+        self.assertTrue(all(j['rental'] and j['perish_tally']==3 for j in r['jokers']))
+
     def test_full_round_1000_trials_partials_and_discard_chain(self):
         s=fixture([card('2')]);s['draw_pool']['cards']=[card('3'),card('A')]
         s['round'].update(hands_left=1,discards_left=2);s['blinds']['small']['score']=16

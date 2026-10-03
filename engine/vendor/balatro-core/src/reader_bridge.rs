@@ -5,8 +5,26 @@ use crate::run::Run;
 pub(crate) fn reader_deck_size() -> usize {
     52
 }
+pub(crate) fn reader_rental_rate() -> i64 {
+    3
+}
 
 impl Run {
+    pub(crate) fn reader_finish_stickers(&mut self) {
+        for index in 0..self.jokers.len() {
+            if self.jokers[index].rental {
+                self.dollars -= self.reader_rental_rate;
+            }
+            if let Some(left) = self.jokers[index].perish_tally {
+                if left > 0 {
+                    self.jokers[index].perish_tally = Some(left - 1);
+                    if left == 1 {
+                        self.set_joker_debuffed(index, true);
+                    }
+                }
+            }
+        }
+    }
     pub fn reader_refresh_debuffs(&mut self) {
         if let Some(blind) = &self.active_blind {
             let pareidolia = self

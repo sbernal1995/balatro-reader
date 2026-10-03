@@ -42,7 +42,7 @@ pub mod effects;
 use std::collections::HashSet;
 
 use crate::cards::{Card, Edition, Enhancement, HandType, Suit};
-use crate::items::{sell_cost, ConsumableSet, JokerId};
+use crate::items::{ConsumableSet, JokerId};
 use crate::rng::{LuaRandom, RngState};
 use crate::scoring::{BeforeCtx, CardEffect, HandCtx, HandsTable, JokerHooks};
 use crate::shop::OwnedJoker;
@@ -441,12 +441,7 @@ impl<'a> EngineHooks<'a> {
             .enumerate()
             .filter(|&(i, _)| i != own_idx)
             .map(|(_, j)| {
-                sell_cost(
-                    j.id.meta().cost,
-                    j.edition,
-                    self.env.discount_percent,
-                    j.extra_value,
-                ) as f64
+                j.sell_value(self.env.discount_percent) as f64
             })
             .sum()
     }
@@ -579,12 +574,7 @@ impl JokerHooks for EngineHooks<'_> {
                             // card.lua:2569 — joker_buffer decrement (feeds a
                             // later Riff-raff's space gate this window).
                             self.out.joker_buffer -= 1;
-                            let sc = sell_cost(
-                                victim.id.meta().cost,
-                                victim.edition,
-                                self.env.discount_percent,
-                                victim.extra_value,
-                            );
+                            let sc = victim.sell_value(self.env.discount_percent);
                             self.jokers[t].state.mult += 2.0 * sc as f64;
                             self.out.destroy_joker(victim.sort_id);
                         }

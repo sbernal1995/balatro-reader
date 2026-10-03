@@ -143,6 +143,12 @@ fn joker(c: &Value, default_id: u32) -> Result<OwnedJoker, String> {
         debuffed: c["state"]["debuff"].as_bool().unwrap_or(false),
         flipped: c["state"]["hidden"].as_bool().unwrap_or(false),
         eternal: a["eternal"].as_bool().unwrap_or(false),
+        rental: a["rental"].as_bool().unwrap_or(false),
+        perish_tally: if a["perishable"].as_bool().unwrap_or(false) {
+            Some(number(a, "perish_tally", 5.) as i64)
+        } else {
+            None
+        },
         hands_at_create: number(a, "hands_played_at_create", 0.) as i64,
         state,
     })
@@ -203,6 +209,7 @@ pub fn import(v: &Value) -> Result<Run, String> {
         text(v, "deck", "").to_uppercase().as_str(),
         "PLASMA" | "B_PLASMA"
     ));
+    run["reader_rental_rate"] = json!(number(ctx, "rental_rate", 3.) as i64);
     run["reader_starting_deck_size"] = json!(number(ctx, "starting_deck_size", 52.) as usize);
     run["reader_excluded_jokers"] =
         json!(v["excluded_jokers"].as_array().cloned().unwrap_or_default());

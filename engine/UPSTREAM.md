@@ -4,4 +4,4 @@
 
 La integración añade importación del estado del lector, búsqueda Monte Carlo y adaptación de la observación. No distribuye código, imágenes, sonidos ni archivos extraídos de Balatro.
 
-Cambios al núcleo vendorizado: puntuación Plasma; tamaño inicial de baraja importado para Erosion; generación de comodines restringida al perfil real; conservación de eternos en Ankh/Hex; reasignación de cartas y comodines ocultos, actualización de debilidades y ordenación privada de cartas seleccionadas. Los campos adicionales tienen valores por defecto para conservar compatibilidad con las pruebas y capturas originales.
+Cambios al núcleo vendorizado: puntuación Plasma; tamaño inicial de baraja importado para Erosion; generación de comodines restringida al perfil real; conservación de eternos en Ankh/Hex; importación de alquiler/perecederos, valor de venta y cierre de ronda de sus pegatinas; reasignación de cartas y comodines ocultos, actualización de debilidades y ordenación privada de cartas seleccionadas. Los campos adicionales tienen valores por defecto para conservar compatibilidad con las pruebas y capturas originales.
