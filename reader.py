@@ -13,6 +13,13 @@ from hidden_cards import HiddenCardTracker
 
 API = 'http://127.0.0.1:12346'
 RECORDS = Path(__file__).with_name('registros')
+DEFAULT_TRIALS = 20
+TRIAL_OPTIONS = (20, 100, 1000)
+
+def simulation_trials(value=DEFAULT_TRIALS):
+    if type(value) is not int or value not in TRIAL_OPTIONS:
+        raise ValueError('Elegí 20, 100 o 1000 tiradas por opción.')
+    return value
 
 class Recorder:
     def __init__(self, folder=RECORDS):
@@ -118,12 +125,14 @@ class SimulationController:
         self.pending = None
         self.result = {'status':'idle','reason':'Presioná Simular para analizar esta mano.'}
 
-    def submit(self, data):
+    def submit(self, data, trials=DEFAULT_TRIALS):
+        trials = simulation_trials(trials)
         data = copy.deepcopy({k:v for k,v in data.items() if k != 'registro'})
         with self.lock:
             self.generation += 1
-            self.pending = (self.generation,data,fingerprint(data))
-            self.result = {'status':'running','fingerprint':fingerprint(data),'completed':0,'total':0}
+            self.pending = (self.generation,data,fingerprint(data),trials)
+            self.result = {'status':'running','fingerprint':fingerprint(data),'completed':0,'total':0,
+                           'trials_per_option':trials}
             self.wakeup.set()
             return self.generation
 
@@ -147,7 +156,7 @@ class SimulationController:
                 self.wakeup.clear()
             if job is None:
                 continue
-            generation,data,signature = job
+            generation,data,signature,trials = job
             recorded_recommendation = None
             def cancelled():
                 current = self.current()
@@ -167,7 +176,7 @@ class SimulationController:
                 if record:
                     save_analysis(data,partial,'recomendacion-parcial.json')
             try:
-                result = analyze(data,trials=1000,progress=progress,cancelled=cancelled)
+                result = analyze(data,trials=trials,progress=progress,cancelled=cancelled)
                 if result.get('status') == 'superseded' or cancelled():
                     with self.lock:
                         if generation == self.generation:
@@ -342,13 +351,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(403)
             return
         try:
-            if self.path == '/hidden-observation':
-                length = int(self.headers.get('Content-Length', '0'))
-                if not 0 < length <= 1024:
-                    raise ValueError('La observación no es válida.')
-                request = json.loads(self.rfile.read(length))
-                if not isinstance(request, dict):
-                    raise ValueError('La observación no es válida.')
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= length <= 1024 or (self.path == '/hidden-observation' and not length):
+                raise ValueError('La solicitud no es válida.')
+            request = json.loads(self.rfile.read(length)) if length else {}
+            if not isinstance(request, dict):
+                raise ValueError('La solicitud no es válida.')
+            trials = simulation_trials(request.get('trials',DEFAULT_TRIALS)) if self.path == '/simulate' else None
             data = state()
             if data.get('state') != 'SELECTING_HAND' or (data.get('round') or {}).get('hands_left',0)<1:
                 raise ValueError('Esperando una mano disponible para jugar.')
@@ -362,8 +371,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/hidden-observation':
                 result, status = {'status':'recorded','inference':result},200
             else:
-                request_id = simulations.submit(data)
-                result, status = {'status':'running','request_id':request_id},202
+                request_id = simulations.submit(data,trials=trials)
+                result, status = {'status':'running','request_id':request_id,'trials_per_option':trials},202
         except Exception as exc:
             result,status = {'status':'blocked','reason':str(exc)},409
         body=json.dumps(result).encode()

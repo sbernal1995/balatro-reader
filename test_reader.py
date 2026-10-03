@@ -6,8 +6,12 @@ import time
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+from http.server import ThreadingHTTPServer
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+import reader
 
-from reader import SimulationController, fingerprint
+from reader import SimulationController, fingerprint, DEFAULT_TRIALS
 from test_simulator import state, card
 
 class ManualSimulationTests(unittest.TestCase):
@@ -19,6 +23,55 @@ class ManualSimulationTests(unittest.TestCase):
         self.assertEqual(self.controller.view()['status'],'idle')
         self.assertIsNone(self.controller.pending)
         self.assertFalse(self.controller.wakeup.is_set())
+
+    def test_trial_count_is_captured_per_job_and_validated(self):
+        self.controller.submit(self.data)
+        self.assertEqual(self.controller.pending[3],DEFAULT_TRIALS)
+        self.assertEqual(self.controller.view()['trials_per_option'],DEFAULT_TRIALS)
+        self.controller.submit(self.data,trials=100)
+        self.assertEqual(self.controller.pending[3],100)
+        self.controller.submit(self.data,trials=1000)
+        generation=self.controller.generation
+        for invalid in (0,1,21,10000,'20',20.0,True,None):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.controller.submit(self.data,trials=invalid)
+        self.assertEqual(self.controller.generation,generation)
+        self.assertEqual(self.controller.pending[3],1000)
+
+    def test_selected_trial_count_reaches_the_engine(self):
+        finished=threading.Event()
+        with patch('reader.analyze',side_effect=lambda *args,**kwargs:
+                (finished.set() or {'status':'blocked'})) as engine:
+            threading.Thread(target=self.controller.run,daemon=True).start()
+            self.controller.submit(self.data,trials=100)
+            self.assertTrue(finished.wait(1))
+            self.assertEqual(engine.call_args.kwargs['trials'],100)
+
+    def test_simulate_endpoint_accepts_profiles_and_rejects_invalid_counts(self):
+        server=ThreadingHTTPServer(('127.0.0.1',0),reader.Handler)
+        threading.Thread(target=server.serve_forever,daemon=True).start()
+        url=f'http://127.0.0.1:{server.server_port}/simulate'
+        def post(body):
+            return urlopen(Request(url,json.dumps(body).encode() if body is not None else b'',
+                {'Content-Type':'application/json'},method='POST'),timeout=2)
+        try:
+            with patch('reader.state',return_value=self.data) as snapshot, \
+                    patch.object(reader.simulations,'submit',return_value=1) as submit, \
+                    patch('reader.cached',None),patch('reader.problem',None):
+                for body,n in ((None,20),({'trials':20},20),({'trials':100},100),({'trials':1000},1000)):
+                    with post(body) as response:
+                        self.assertEqual(response.status,202)
+                        self.assertEqual(json.load(response)['trials_per_option'],n)
+                    submit.assert_called_with(self.data,trials=n)
+                calls=submit.call_count
+                for body in ({'trials':21},{'trials':True},[],{'trials':'1000'}):
+                    with self.assertRaises(HTTPError) as error: post(body)
+                    self.assertEqual(error.exception.code,409)
+                    error.exception.close()
+                self.assertEqual(submit.call_count,calls)
+                self.assertEqual(snapshot.call_count,calls)
+        finally:
+            server.shutdown();server.server_close()
 
     def test_submit_captures_input_and_allows_repeat(self):
         first=self.controller.submit(self.data)

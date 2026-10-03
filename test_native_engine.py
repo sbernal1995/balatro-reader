@@ -295,7 +295,7 @@ class NativeEngineTests(unittest.TestCase):
             result=controller.view()
             self.assertEqual(result['status'],'ready',result)
             self.assertGreater(updates,0)
-            self.assertEqual(result['recommendation']['trials'],1000)
+            self.assertEqual(result['recommendation']['trials'],reader.DEFAULT_TRIALS)
             self.assertEqual(result['recommendation']['win_probability'],1)
             self.assertIsNotNone(result['recommendation']['winning_sequence'])
 
