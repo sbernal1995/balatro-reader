@@ -207,7 +207,8 @@ class ReaderInferenceTests(unittest.TestCase):
         def post(body, origin=None):
             headers = {'Content-Type':'application/json'}
             if origin: headers['Origin'] = origin
-            return urlopen(Request(base+'/hidden-observation',json.dumps(body).encode(),headers),timeout=3)
+            payload = json.dumps(body).encode() if body is not None else None
+            return urlopen(Request(base+'/hidden-observation',payload,headers,method='POST'),timeout=3)
         try:
             with patch('reader.hidden_tracker',tracker), patch('reader.state',return_value=raw) as read, \
                     patch('reader.cached',None), patch('reader.problem',None), patch.object(reader.simulations,'submit') as simulate:
@@ -218,8 +219,10 @@ class ReaderInferenceTests(unittest.TestCase):
                         self.assertEqual(result['inference']['observations'], [] if mode=='clear' else ['rank'])
                 with self.assertRaises(HTTPError) as error: post({'mode':'rank','hand_id':'old'})
                 self.assertEqual(error.exception.code,409)
-                with self.assertRaises(HTTPError) as error: post({},'https://foreign.example')
+                error.exception.close()
+                with self.assertRaises(HTTPError) as error: post(None,'https://foreign.example')
                 self.assertEqual(error.exception.code,403)
+                error.exception.close()
                 self.assertEqual(read.call_count,3)
                 simulate.assert_not_called()
         finally:
