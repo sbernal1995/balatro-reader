@@ -194,6 +194,86 @@ class NativeEngineTests(unittest.TestCase):
         self.assertEqual(r['status'],'blocked')
         self.assertIn('j_fake_mod',r['reason'])
 
+    def test_winning_sequence_accumulates_three_hands_from_current_score(self):
+        s=fixture([card('A')]);s['draw_pool']['cards']=[card('K'),card('Q')]
+        s['round'].update(hands_left=3,discards_left=0,chips=3,hands_played=2)
+        s['blinds']['small']['score']=49
+        before=copy.deepcopy(s)
+        result=analyze(s,20)['recommendation'];seq=result['winning_sequence']
+        self.assertEqual(s,before)
+        self.assertEqual(seq['hands_used'],3)
+        self.assertEqual(seq['initial_score'],3)
+        self.assertEqual(seq['final_score'],49)
+        self.assertTrue(seq['reached_target'])
+        steps=seq['steps']
+        self.assertEqual([x['action'] for x in steps],['play']*3)
+        self.assertEqual([x['hand_number'] for x in steps],[3,4,5])
+        self.assertEqual([x['score'] for x in steps],[16,15,15])
+        self.assertEqual([x['total_score'] for x in steps],[19,34,49])
+        self.assertEqual({x['cards'][0]['value']['rank'] for x in steps},{'A','K','Q'})
+        self.assertEqual(steps[-1]['hands_left'],0)
+
+    def test_winning_sequence_uses_cards_drawn_after_discard(self):
+        s=fixture([card('2','S')]);s['draw_pool']['cards']=[card('A','H')]
+        s['round'].update(hands_left=1,discards_left=1)
+        s['blinds']['small']['score']=16
+        partials=[]
+        result=analyze(s,20,progress=lambda *args:partials.append(args[2]))
+        seq=result['recommendation']['winning_sequence']
+        self.assertEqual([x['action'] for x in seq['steps']],['discard','play'])
+        self.assertEqual(seq['steps'][0]['cards'][0]['value'],{'rank':'2','suit':'S'})
+        self.assertEqual(seq['steps'][1]['cards'][0]['value'],{'rank':'A','suit':'H'})
+        self.assertEqual([x['score'] for x in seq['steps']],[0,16])
+        self.assertEqual(seq['discards_used'],1)
+        self.assertTrue(any(p.get('recommendation',{}).get('winning_sequence') for p in partials))
+        self.assertEqual(seq,analyze(s,20)['recommendation']['winning_sequence'])
+
+    def test_no_winning_sequence_when_all_trials_lose(self):
+        s=fixture([card('2')]);s['draw_pool']['cards']=[]
+        s['round'].update(hands_left=1,discards_left=0)
+        result=analyze(s,20)['recommendation']
+        self.assertEqual(result['win_probability'],0)
+        self.assertIsNone(result['winning_sequence'])
+
+    def test_winning_sequence_records_consumable_before_hand(self):
+        s=fixture([card('A'),card('K'),card('Q'),card('9'),card('2')])
+        s['round'].update(hands_left=1,discards_left=0)
+        s['blinds']['small']['score']=400
+        s['consumables']['cards']=[consumable('c_jupiter')]
+        seq=analyze(s,20)['recommendation']['winning_sequence']
+        self.assertEqual([x['action'] for x in seq['steps']],['use','play'])
+        self.assertEqual(seq['steps'][0]['label'],'Jupiter')
+        self.assertEqual(seq['steps'][0]['score'],0)
+        self.assertEqual(seq['steps'][1]['hand'],'Flush')
+        self.assertGreaterEqual(seq['final_score'],400)
+
+    def test_winning_sequence_records_sale_that_disables_leaf(self):
+        s=fixture([card('A')],[joker('j_baron')],'bl_final_leaf')
+        s['round'].update(hands_left=1,discards_left=0)
+        s['active_blind']['chips']=16;s['blinds']['boss']['score']=16
+        seq=analyze(s,20)['recommendation']['winning_sequence']
+        self.assertEqual([x['action'] for x in seq['steps']],['sell_joker','play'])
+        self.assertEqual(seq['steps'][0]['score'],0)
+        self.assertEqual(seq['final_score'],16)
+
+    def test_winning_sequence_keeps_face_down_cards_anonymous(self):
+        s=fixture([{'state':{'hidden':True}}]);s['unseen_cards']=[card('A')]
+        s['draw_pool']['cards']=[];s['round'].update(hands_left=1,discards_left=0)
+        s['blinds']['small']['score']=16
+        step=analyze(s,20)['recommendation']['winning_sequence']['steps'][0]
+        self.assertEqual(step['hand'],'Cartas ocultas')
+        self.assertTrue(step['cards'][0]['state']['hidden'])
+        self.assertNotIn('value',step['cards'][0])
+
+    def test_winning_sequence_reports_mr_bones_save_below_target(self):
+        s=fixture([card('A')],[joker('j_mr_bones')])
+        s['draw_pool']['cards']=[];s['round'].update(hands_left=1,discards_left=0)
+        s['blinds']['small']['score']=64
+        seq=analyze(s,20)['recommendation']['winning_sequence']
+        self.assertEqual(seq['final_score'],16)
+        self.assertFalse(seq['reached_target'])
+        self.assertEqual(seq['hands_used'],1)
+
 
 class ReaderNormalizationTests(unittest.TestCase):
     def capture(self,data):

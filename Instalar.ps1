@@ -11,8 +11,8 @@ $configPath = Join-Path $project 'config.local.json'
 $deps = Join-Path $project '.deps'
 $downloads = Join-Path $project '.downloads'
 $upstream = Join-Path $deps 'balatrobot'
-$engineVersion = 'v0.2.1'
-$engineHash = 'C3F6CD7048DFAD45C5776B8668B86329549EBC4D55900F1CD5E7E6D7B260C0B2'
+$engineVersion = 'v0.4.0'
+$engineHash = '7BC3B0644A8C01A4CDBCDECCE024BC9BB0FE392484E8438ED1315AE29268BC5E'
 
 function Find-Balatro {
     $candidates = [System.Collections.Generic.List[string]]::new()

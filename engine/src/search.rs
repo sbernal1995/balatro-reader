@@ -481,6 +481,106 @@ pub fn analyze(state: &Value, run: Run, trials: usize, seed: u64) -> Value {
     snapshot(&results, total, true)
 }
 
+fn preview_card(card: &Card) -> Value {
+    if card.face_down {
+        return json!({"label":"Carta oculta","state":{"hidden":true}});
+    }
+    let mut modifier = serde_json::Map::new();
+    for (key, value) in [
+        ("enhancement", format!("{:?}", card.enhancement)),
+        ("edition", format!("{:?}", card.edition)),
+        ("seal", format!("{:?}", card.seal)),
+    ] {
+        if value != "None" {
+            modifier.insert(key.into(), json!(value.to_uppercase()));
+        }
+    }
+    json!({"value":{"rank":card.rank.key().to_string(),"suit":card.suit.key().to_string()},
+        "modifier":modifier,"state":{"debuff":card.debuff}})
+}
+
+fn advance(run: &mut Run, m: &Move, trace: &mut Option<Vec<Value>>) -> Result<(), String> {
+    // Capture the selected cards before draws, transformations or end-round cleanup.
+    let mut row = trace.as_ref().map(|_| {
+        let hidden = m.indices.iter().any(|&i| run.hand()[i].face_down);
+        let object_name = if m.action == "sell_joker" {
+            run.jokers().get(m.slot).map(|j| {
+                if j.flipped {
+                    "Comodín oculto"
+                } else {
+                    j.id.meta().name
+                }
+            })
+        } else if m.action == "use" || m.action == "sell_consumable" {
+            run.consumables().get(m.slot).and_then(|c| {
+                balatro_core::items::consumable_by_key(c.key).map(|(meta, _)| meta.name)
+            })
+        } else {
+            None
+        };
+        json!({"action":m.action,"label":object_name,"slot":m.slot+1,
+            "cards":m.indices.iter().map(|&i|preview_card(&run.hand()[i])).collect::<Vec<_>>(),
+            "hidden_cards":hidden,"hand_number":run.hands_played_this_round()+1})
+    });
+    apply(run, m)?;
+    if let Some(ref mut row) = row {
+        row["score"] = json!(if m.action == "play" {
+            run.last_play().map(|p| p.score).unwrap_or(0.)
+        } else {
+            0.
+        });
+        if m.action == "play" {
+            row["hand"] = json!(if row["hidden_cards"] == true {
+                "Cartas ocultas"
+            } else {
+                run.last_play()
+                    .map(|p| hand_name(p.hand_type))
+                    .unwrap_or("")
+            });
+        }
+        row["total_score"] = json!(run.chips());
+        row["hands_left"] = json!(run.hands_left());
+        row["discards_left"] = json!(run.discards_left());
+    }
+    if let (Some(trace), Some(row)) = (trace, row) {
+        trace.push(row);
+    }
+    Ok(())
+}
+
+fn rollout(
+    run: &Run,
+    m: &Move,
+    seed: u64,
+    trial: usize,
+    record: bool,
+) -> Option<(Run, usize, f64, Vec<Value>)> {
+    let mut sim = run.clone();
+    sim.reader_redeterminize(&format!("reader-{seed}-{trial}"));
+    let mut trace = record.then(Vec::new);
+    advance(&mut sim, m, &mut trace).ok()?;
+    let immediate = if m.action == "play" {
+        sim.last_play().map(|p| p.score).unwrap_or(0.)
+    } else {
+        0.
+    };
+    let mut spent = usize::from(!matches!(m.action.as_str(), "play" | "discard"));
+    // Same policy and random streams for evaluation and the recorded replay.
+    for step in 0..63 {
+        if sim.state() != State::SelectingHand || sim.hand().is_empty() {
+            break;
+        }
+        let Some(next) = policy(&sim, &format!("probe-{seed}-{trial}-{step}")) else {
+            break;
+        };
+        if advance(&mut sim, &next, &mut trace).is_err() {
+            break;
+        }
+        spent += usize::from(!matches!(next.action.as_str(), "play" | "discard"));
+    }
+    Some((sim, spent, immediate, trace.unwrap_or_default()))
+}
+
 fn evaluate(run: &Run, m: &Move, trials: usize, seed: u64, h: i64, initial_chips: f64) -> Value {
     let mut wins = 0usize;
     let mut sum = 0.;
@@ -491,40 +591,24 @@ fn evaluate(run: &Run, m: &Move, trials: usize, seed: u64, h: i64, initial_chips
     let mut by_hands = vec![0usize; (h + 8).max(1) as usize];
     let mut scores = vec![];
     let mut immediate = 0.;
+    let mut example = None;
     for trial in 0..trials {
-        let mut sim = run.clone();
-        sim.reader_redeterminize(&format!("reader-{seed}-{trial}"));
-        let initial_h = sim.hands_played_this_round();
-        let initial_d = sim.discards_used_this_round();
-        if apply(&mut sim, &m).is_err() {
+        let Some((sim, spent, first_score, _)) = rollout(run, m, seed, trial, false) else {
             continue;
-        }
-        inventory_spent += usize::from(!matches!(m.action.as_str(), "play" | "discard"));
-        if m.action == "play" {
-            immediate += sim.last_play().map(|p| p.score).unwrap_or(0.);
-        }
-        // A finite guard also handles consumable creation/copy loops. Using a consumable
-        // consumes one action; a safety cutoff is surfaced as a search approximation.
-        for step in 0..63 {
-            if sim.state() != State::SelectingHand {
-                break;
-            }
-            if sim.hand().is_empty() {
-                break;
-            }
-            let Some(next) = policy(&sim, &format!("probe-{seed}-{trial}-{step}")) else {
-                break;
-            };
-            if apply(&mut sim, &next).is_err() {
-                break;
-            }
-            inventory_spent += usize::from(!matches!(next.action.as_str(), "play" | "discard"));
-        }
-        let used_h = (sim.hands_played_this_round() - initial_h).max(0) as usize;
+        };
+        inventory_spent += spent;
+        immediate += first_score;
+        let used_h =
+            (sim.hands_played_this_round() - run.hands_played_this_round()).max(0) as usize;
         // End-round reset preserves these counters in the simulator; include Mr Bones.
-        let used_d = (sim.discards_used_this_round() - initial_d).max(0) as usize;
+        let used_d =
+            (sim.discards_used_this_round() - run.discards_used_this_round()).max(0) as usize;
         let success = matches!(sim.state(), State::RoundEval | State::Won);
         if success {
+            let candidate = (used_h, trial);
+            if example.is_none_or(|best| candidate < best) {
+                example = Some(candidate);
+            }
             wins += 1;
             winning_hands += used_h;
             for (k, count) in by_hands.iter_mut().enumerate() {
@@ -565,6 +649,18 @@ fn evaluate(run: &Run, m: &Move, trials: usize, seed: u64, h: i64, initial_chips
             hand_name(ht)
         });
         result["immediate_score"] = json!(immediate / n);
+    }
+    result["winning_sequence"] = Value::Null;
+    if let Some((used_h, trial)) = example {
+        if let Some((sim, _, _, steps)) = rollout(run, m, seed, trial, true) {
+            if matches!(sim.state(), State::RoundEval | State::Won) {
+                result["winning_sequence"] = json!({"trial":trial+1,"steps":steps,
+                    "hands_used":used_h,
+                    "discards_used":(sim.discards_used_this_round()-run.discards_used_this_round()).max(0),
+                    "initial_score":initial_chips,"final_score":sim.chips(),"target_score":run.blind_chips(),
+                    "reached_target":sim.chips()>=run.blind_chips()});
+            }
+        }
     }
     result
 }

@@ -25,6 +25,8 @@ La prioridad es la **mayor probabilidad estimada de superar esta ciega**. Entre 
 
 Se muestra la probabilidad acumulada de ganar con una mano, con hasta dos, etc., las manos necesarias entre las victorias, fichas adicionales de media y un intervalo de Wilson del 95%. El intervalo refleja el muestreo individual; no incluye el error de la estrategia aproximada ni la selección de la mejor entre muchas opciones.
 
+Al finalizar aparece una **secuencia ganadora simulada** para la acción recomendada: descartes, consumibles, ventas y manos jugadas, con las cartas dibujadas, categoría, fichas por mano y total acumulado. Se elige una victoria con la menor cantidad de manos observada entre las tiradas de esa opción. Es un ejemplo de esos robos y efectos aleatorios; el porcentaje mostrado sigue correspondiendo al conjunto de tiradas. Si ninguna tirada ganó, se indica que no hay secuencia ganadora. La secuencia se guarda también en `registros/recomendacion.json` y se oculta cuando cambia la partida para volver a calcular.
+
 La selección inicial se enumera; el orden sugerido de cartas y las continuaciones se buscan con heurísticas. Después de cada robo, la estrategia evalúa candidatos de jugada y descarte y acciones de inventario sobre una observación independiente del futuro real. No enumera todas las secuencias ni todas las permutaciones de cartas o comodines. **El porcentaje no certifica el óptimo global**. El horizonte termina en esta ciega; no decide compras ni optimiza ciegas futuras, aunque el motor contiene las habilidades económicas correspondientes.
 
 El simulador usa su propia semilla, independiente de la del juego, y muestras comunes entre las primeras acciones. La pila entra como composición canónica y se baraja para cada muestra. Las identidades ocultas se agrupan en una bolsa anónima y se reasignan en cada tirada; no se consulta la identidad de una posición oculta ni el orden futuro de robo. El orden de comodines ocultos también se muestrea. Las generaciones aleatorias respetan las cartas bloqueadas en el perfil cuando el mod actualizado exporta esa información.
@@ -62,7 +64,8 @@ Con Rust estable y las herramientas de compilación de la plataforma:
 ```powershell
 cargo test --manifest-path engine/Cargo.toml --workspace --release --locked
 cargo build --manifest-path engine/Cargo.toml --release --locked
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator test_synergies -v
+uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator test_synergies test_lua_snapshot -v
 ```
 
 Las pruebas del núcleo cubren evaluación de manos, puntuación, comodines, jefes, consumibles, sellos, economía y aleatoriedad. Las pruebas de integración recorren los 150 comodines, 28 jefes y 52 consumibles y verifican importación de valores actuales, copias, eternos, restricciones, cartas ocultas, consumibles, descartes encadenados, resultados parciales y cancelación. GitHub ejecuta las pruebas en Windows y Linux. El evaluador anterior de Python queda como referencia de regresión; el panel utiliza el motor Rust.
