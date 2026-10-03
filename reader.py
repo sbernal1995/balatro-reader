@@ -100,6 +100,15 @@ def current_input():
         return cached if not problem else None
 
 
+def save_analysis(data, result, filename):
+    RECORDS.mkdir(parents=True, exist_ok=True)
+    target = RECORDS / filename
+    temporary = target.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'capturado_en':datetime.now(timezone.utc).isoformat(),
+        'estado':data,'analisis':result},ensure_ascii=False),encoding='utf-8')
+    temporary.replace(target)
+
+
 class SimulationController:
     def __init__(self, current=current_input):
         self.current = current
@@ -139,14 +148,24 @@ class SimulationController:
             if job is None:
                 continue
             generation,data,signature = job
+            recorded_recommendation = None
             def cancelled():
                 current = self.current()
                 with self.lock:
                     return generation != self.generation or current is None or fingerprint(current) != signature
             def progress(done,total,partial):
+                nonlocal recorded_recommendation
+                record = False
                 with self.lock:
                     if generation == self.generation:
                         self.result = dict(partial,fingerprint=signature)
+                        recommendation = partial.get('recommendation')
+                        key = json.dumps(recommendation,sort_keys=True) if recommendation else None
+                        if key is not None and key != recorded_recommendation:
+                            recorded_recommendation = key
+                            record = True
+                if record:
+                    save_analysis(data,partial,'recomendacion-parcial.json')
             try:
                 result = analyze(data,trials=1000,progress=progress,cancelled=cancelled)
                 if result.get('status') == 'superseded' or cancelled():
@@ -156,11 +175,7 @@ class SimulationController:
                                 'reason':'El cálculo se interrumpió. Presioná Simular para usar el estado actual.'}
                     continue
                 if result.get('status') == 'ready':
-                    RECORDS.mkdir(parents=True,exist_ok=True)
-                    temporary = RECORDS / 'recomendacion.tmp'
-                    temporary.write_text(json.dumps({'capturado_en':datetime.now(timezone.utc).isoformat(),
-                        'estado':data,'analisis':result},ensure_ascii=False),encoding='utf-8')
-                    temporary.replace(RECORDS / 'recomendacion.json')
+                    save_analysis(data,result,'recomendacion.json')
             except Exception as exc:
                 result = {'status':'blocked','reason':str(exc)}
             with self.lock:

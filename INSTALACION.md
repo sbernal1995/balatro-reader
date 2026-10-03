@@ -73,6 +73,7 @@ Para usar la API, abrí el juego mediante **Iniciar.cmd**. Si ya lo abriste desd
 - `registros/actual.json`: última captura del juego.
 - `registros/historial.jsonl`: historial de cambios observados.
 - `registros/recomendacion.json`: último análisis finalizado y el estado utilizado.
+- `registros/recomendacion-parcial.json`: última recomendación provisional distinta y el estado utilizado, para revisar estimaciones de cálculos interrumpidos.
 - `reader.log` y `reader-error.log`: registros del lector.
 - `game.log`, `game-error.log` y `logs/`: registros de la API y el juego.
 

@@ -25,6 +25,10 @@ La prioridad es la **mayor probabilidad estimada de superar esta ciega**. Entre 
 
 Se muestra la probabilidad acumulada de ganar con una mano, con hasta dos, etc., las manos necesarias entre las victorias, fichas adicionales de media y un intervalo de Wilson del 95%. El intervalo refleja el muestreo individual; no incluye el error de la estrategia aproximada ni la selección de la mejor entre muchas opciones.
 
+La interfaz presenta **victorias observadas en la simulación**. Si todas las tiradas ganan, muestra **1000 / 1000** y aclara que no es una garantía; si ninguna gana, muestra **0 / 1000**. Los resultados intermedios usan porcentajes observados, sin redondear una frecuencia inferior a uno a 100%. El gráfico cuenta **manos adicionales desde el estado analizado**, incluyendo la jugada recomendada si corresponde. Las victorias pueden requerir descartes, consumibles o ventas, y jugadas posteriores adaptadas a los robos de cada tirada. No es la probabilidad de ganar con la primera jugada ni una secuencia fija de dos manos.
+
+Un nuevo robo o efecto aleatorio aporta información y puede cambiar la estimación. Que 1000 tiradas ganen no prueba que todo resultado real gane. El [intervalo de Wilson](https://www.itl.nist.gov/div898/handbook/prc/section2/prc241.htm) mide incertidumbre de muestreo bajo el modelo, no errores de las reglas implementadas. Las fichas de la primera jugada también se muestran como media simulada cuando interviene el azar.
+
 Al finalizar aparece una **secuencia ganadora simulada** para la acción recomendada: descartes, consumibles, ventas y manos jugadas, con las cartas dibujadas, categoría, fichas por mano y total acumulado. Se elige una victoria con la menor cantidad de manos observada entre las tiradas de esa opción. Es un ejemplo de esos robos y efectos aleatorios; el porcentaje mostrado sigue correspondiendo al conjunto de tiradas. Si ninguna tirada ganó, se indica que no hay secuencia ganadora. La secuencia se guarda también en `registros/recomendacion.json` y se oculta cuando cambia la partida para volver a calcular.
 
 La selección inicial se enumera; el orden sugerido de cartas y las continuaciones se buscan con heurísticas. Después de cada robo, la estrategia evalúa candidatos de jugada y descarte y acciones de inventario sobre una observación independiente del futuro real. No enumera todas las secuencias ni todas las permutaciones de cartas o comodines. **El porcentaje no certifica el óptimo global**. El horizonte termina en esta ciega; no decide compras ni optimiza ciegas futuras, aunque el motor contiene las habilidades económicas correspondientes.
@@ -38,6 +42,8 @@ El cálculo empieza solo al pulsar **Simular**. Durante el análisis aparecen re
 Las recomendaciones muestran cartas por valor y palo, por ejemplo **As ♠** o **J ♥**, y resaltan las cartas de la mano o del inventario. Seguí el orden mostrado cuando corresponda. Después de jugar, descartar, usar o vender, pulsá **Simular** de nuevo. Cualquier cambio relevante de estado cancela el cálculo anterior y retira su recomendación. El lector continúa respondiendo durante el cálculo.
 
 La comparación usa los datos de juego que importa el motor: cartas y orden, recursos, valores de comodines, niveles, contadores y reglas de la ciega. Los temporizadores, movimientos de la interfaz, descripciones y vistas previas de manos no cancelan la simulación.
+
+Seleccionar o deseleccionar cartas en Balatro conserva los detalles abiertos, el foco, el desplazamiento y los resultados del panel. Cada sección se actualiza cuando cambian sus datos visibles; las animaciones y ejemplos de manos no reconstruyen la interfaz. Los resultados terminados se conservan entre consultas y se retiran cuando la partida cambia de forma relevante.
 
 ## Identificar cartas dadas vuelta
 
@@ -68,6 +74,7 @@ La API se consulta cada segundo. Se guardan mano, pila de robo, descarte, colecc
 - `registros/actual.json`: última captura con fecha UTC.
 - `registros/historial.jsonl`: cambios observados.
 - `registros/recomendacion.json`: último análisis terminado junto con su estado de entrada.
+- `registros/recomendacion-parcial.json`: última recomendación provisional distinta junto con su estado de entrada, aunque después la partida interrumpa el cálculo. Permite revisar una estimación mostrada antes de llegar al resultado final.
 
 Estos archivos permanecen en tu PC y se excluyen de Git. Una carta o jefe ajeno al registro del juego base bloquea la recomendación con su clave. No se admite contenido adicional de mods ni se garantiza fidelidad de desafíos con reglas especiales. El modelo recibe la situación de la ciega ya iniciada; no reproduce el inicio de una partida de cada baraja o apuesta.
 

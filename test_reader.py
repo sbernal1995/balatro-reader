@@ -1,4 +1,5 @@
 import copy
+import json
 import unittest
 import threading
 import time
@@ -142,5 +143,28 @@ class ManualSimulationTests(unittest.TestCase):
                 time.sleep(.01)
         self.data=original
         self.assertEqual(self.controller.view()['status'],'stale')
+
+    def test_partial_estimate_saved_before_game_change_cancels_the_calculation(self):
+        def calculation(data,progress,cancelled,**kwargs):
+            partial={'status':'running','recommendation':{'action':'play','indices':[1],
+                'win_probability':1,'trials':1000,'win_by_hands':[0,1]}}
+            progress(1,10,partial)
+            self.data['round']['hands_left']-=1
+            self.assertTrue(cancelled())
+            return {'status':'superseded'}
+        with tempfile.TemporaryDirectory() as folder, patch('reader.RECORDS',Path(folder)), \
+                patch('reader.analyze',side_effect=calculation):
+            threading.Thread(target=self.controller.run,daemon=True).start()
+            self.controller.submit(self.data)
+            deadline=time.monotonic()+2
+            while self.controller.result['status']=='running' and time.monotonic()<deadline:
+                time.sleep(.01)
+            record=json.loads((Path(folder)/'recomendacion-parcial.json').read_text(encoding='utf-8'))
+            self.assertEqual(record['estado']['round']['hands_left'],2)
+            self.assertEqual(record['analisis']['recommendation']['win_probability'],1)
+            self.assertEqual(record['analisis']['recommendation']['trials'],1000)
+            self.assertEqual(record['analisis']['status'],'running')
+            self.assertFalse((Path(folder)/'recomendacion.json').exists())
+            self.assertEqual(self.controller.view()['status'],'stale')
 
 if __name__=='__main__': unittest.main()
