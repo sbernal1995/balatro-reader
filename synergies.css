@@ -1,0 +1,24 @@
+.build-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
+.build-toolbar label{color:var(--muted);font-size:13px}
+select{max-width:100%;background:#0c1b1c;color:var(--text);border:1px solid #45605a;border-radius:10px;padding:11px;font:inherit}
+select:focus-visible,a:focus-visible{outline:3px solid var(--green);outline-offset:3px}
+.build-focus{padding:16px;border:1px solid #efd08055;border-radius:12px;background:#efd08008;margin-bottom:16px}
+.build-pieces{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+.build-piece{border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;color:var(--muted)}
+.build-piece.owned{border-color:#8de0af70;color:var(--green);background:#8de0af0b}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}
+.shop-card{padding:18px;border:1px solid var(--line);border-radius:14px;background:#ffffff03}
+.shop-card .score-line{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:14px 0 3px}
+.affinity{font-size:31px;color:var(--green);font-weight:800;font-variant-numeric:tabular-nums}
+.affinity.medium{color:var(--gold)}.affinity.low{color:var(--muted)}
+.shop-card strong{color:var(--gold)}.shop-card .meter{margin:8px 0 15px}.shop-card .meter>i{background:var(--green)}
+.shop-card p,.build-focus p{font-size:13px;color:var(--muted)}
+.shop-card .caution{color:var(--red)}.shop-card .goal-piece{color:var(--green)}
+.shop-card ul{padding-left:18px;font-size:12px;color:var(--muted);margin:12px 0}.shop-card li{margin:8px 0}
+.shop-card details,.build-focus details{margin:15px 0 0;padding:10px;font-size:12px}
+.sources{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:11px}
+a{color:var(--green)}.build-library{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.library-card{padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff03}
+.library-card button{font-size:12px;padding:7px 14px;margin-top:12px}.library-card p{font-size:12px;color:var(--muted)}
+#synergy-status{font-size:13px;color:var(--muted)}#build-warnings p{font-size:12px;color:var(--red)}
+@media(max-width:640px){.shop-grid{grid-template-columns:1fr}.build-toolbar{align-items:stretch;flex-direction:column}}

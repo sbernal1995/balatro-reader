@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit, parse_qs
 from native_engine import analyze
+from synergies import LIBRARY, JOKERS, evaluate as evaluate_synergies
 
 API = 'http://127.0.0.1:12346'
 RECORDS = Path(__file__).with_name('registros')
@@ -171,6 +173,18 @@ def state():
             if isinstance(card.get('state'),dict):
                 card['state'].pop('highlight',None)
         data['unknown_jokers'] = sorted(hidden_jokers,key=lambda c:json.dumps(c,sort_keys=True))
+    # Whole-deck composition is an anonymous multiset, like the draw belief bag.
+    # A card facing down in the deck must not disappear from shop fit counts.
+    collection = data.get('collection') or {}
+    collection_cards = collection.get('cards',[]) if isinstance(collection,dict) else collection
+    if collection_cards:
+        for card in collection_cards:
+            for field in ('value','modifier'):
+                if not isinstance(card.get(field),dict): card[field] = {}
+        composition = [{'value':{k:v for k,v in (c.get('value') or {}).items() if k in ('rank','suit')},
+                        'modifier':{k:v for k,v in (c.get('modifier') or {}).items() if k in ('enhancement','edition','seal')}}
+                       for c in collection_cards]
+        data['deck_composition'] = {'cards':sorted(composition,key=lambda c:json.dumps(c,sort_keys=True))}
     # Do not expose the draw pile or identities of face-down cards.
     pool = data.pop('cards', None)
     if isinstance(pool, dict):
@@ -199,7 +213,23 @@ def state():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/analysis':
+        route = urlsplit(self.path)
+        if route.path == '/builds':
+            body = json.dumps(dict(LIBRARY, jokers=JOKERS)).encode()
+            status, kind = 200, 'application/json; charset=utf-8'
+        elif route.path == '/synergies':
+            data = current_input()
+            try:
+                if data is None:
+                    result, status = {'status':'waiting','reason':'Esperando conexión para evaluar la tienda.'},503
+                else:
+                    target = parse_qs(route.query).get('build',['auto'])[0]
+                    result, status = evaluate_synergies(data,target),200
+            except ValueError as exc:
+                result, status = {'status':'blocked','reason':str(exc)},400
+            body = json.dumps(result).encode()
+            kind = 'application/json; charset=utf-8'
+        elif self.path == '/analysis':
             body = json.dumps(simulations.view()).encode()
             status, kind = 200, 'application/json; charset=utf-8'
         elif self.path == '/state':
@@ -216,6 +246,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/':
             body = Path(__file__).with_name('index.html').read_bytes()
             status, kind = 200, 'text/html; charset=utf-8'
+        elif self.path in ('/synergies.js','/synergies.css'):
+            body = Path(__file__).with_name(self.path[1:]).read_bytes()
+            status = 200
+            kind = 'text/javascript; charset=utf-8' if self.path.endswith('.js') else 'text/css; charset=utf-8'
         elif self.path == '/favicon.ico':
             body, status, kind = b'', 204, 'image/x-icon'
         else:

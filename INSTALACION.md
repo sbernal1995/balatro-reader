@@ -1,5 +1,7 @@
 # Instalar en otra PC con Windows
 
+La biblioteca de builds viene incluida en la descarga del repositorio. En el panel, buscá **Qué aporta la tienda**: elegí detección automática o una build objetivo. Las ofertas reciben afinidades al entrar a la tienda. Cada build muestra sus fuentes; la fórmula y su alcance están en [BUILDS.md](BUILDS.md).
+
 ## Requisitos
 
 - Windows 10 u 11 de 64 bits.
@@ -96,7 +98,7 @@ Descargá la nueva versión o ejecutá `git pull` si clonaste el repositorio. Co
 Después de instalar, desde la carpeta del proyecto:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader -v
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_simulator test_reader test_synergies -v
 ```
 
 Para desarrollo, `Instalar.cmd -SkipModInstall` prepara las dependencias y detecta el juego sin reinstalar los mods. El instalador y el lanzador están preparados para Windows; no incluyen un flujo de instalación para macOS o Linux.

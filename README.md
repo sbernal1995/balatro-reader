@@ -35,6 +35,12 @@ El cálculo empieza solo al pulsar **Simular**. Durante el análisis aparecen re
 
 Las recomendaciones muestran cartas por valor y palo, por ejemplo **As ♠** o **J ♥**, y resaltan las cartas de la mano o del inventario. Seguí el orden mostrado cuando corresponda. Después de jugar, descartar, usar o vender, pulsá **Simular** de nuevo. Cualquier cambio relevante de estado cancela el cálculo anterior y retira su recomendación. El lector continúa respondiendo durante el cálculo.
 
+## Builds y tienda
+
+La sección **Qué aporta la tienda** incluye 12 builds investigadas en internet, con enlaces a sus fuentes, piezas presentes y piezas faltantes. Podés detectar una estrategia con tus comodines o elegir una build objetivo; la preferencia se conserva en el navegador.
+
+Al entrar a la tienda, sus comodines y consumibles relacionados muestran un **índice de afinidad explicado** que considera compañeros, baraja, niveles y conflictos. El precio y los espacios se informan aparte. Este porcentaje mide compatibilidad heurística; la probabilidad de ganar una ciega sigue siendo la del botón **Simular**. Una carta sin relación revisada queda sin porcentaje. Consultá [BUILDS.md](BUILDS.md) para las combinaciones, la fórmula y los límites.
+
 ## Lectura y registro
 
 La API se consulta cada segundo. Se guardan mano, pila de robo, descarte, colección, comodines, consumibles, niveles y usos de las manos, jefe activo y sus restricciones, historial de Tarot/planetas/espectrales, probabilidades y valores persistentes de cada carta.
@@ -56,7 +62,7 @@ Con Rust estable y las herramientas de compilación de la plataforma:
 ```powershell
 cargo test --manifest-path engine/Cargo.toml --workspace --release --locked
 cargo build --manifest-path engine/Cargo.toml --release --locked
-.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator -v
+.\.venv\Scripts\python.exe -m unittest test_native_engine test_reader test_simulator test_synergies -v
 ```
 
 Las pruebas del núcleo cubren evaluación de manos, puntuación, comodines, jefes, consumibles, sellos, economía y aleatoriedad. Las pruebas de integración recorren los 150 comodines, 28 jefes y 52 consumibles y verifican importación de valores actuales, copias, eternos, restricciones, cartas ocultas, consumibles, descartes encadenados, resultados parciales y cancelación. GitHub ejecuta las pruebas en Windows y Linux. El evaluador anterior de Python queda como referencia de regresión; el panel utiliza el motor Rust.
